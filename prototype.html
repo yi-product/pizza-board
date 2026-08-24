@@ -1,0 +1,4141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Pizza Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700;800&display=swap" rel="stylesheet" />
+<style>
+  /* ==== 3D 现代风 · 设计系统 ====
+     核心思路：
+     · 蓝底饱和色块（#2A4DFF），披萨盘用 CSS box-shadow 错位带造立体感
+     · 玻璃质感 UI（rgba 半透明 + backdrop-filter blur）漂浮在蓝底上
+     · 现代粗体无衬线（Space Grotesk / Inter），中文用 Noto Sans SC
+     · 没有 SVG 风景，纯色 + 物件 = 像一个产品展厅
+  */
+  :root {
+    --bg:           #2A4DFF;          /* 主蓝 */
+    --bg-deep:      #1A38D9;          /* 渐变深端 */
+    --bg-glow:      #3D5FFF;          /* 渐变浅端 */
+
+    /* 玻璃 UI（dark glass on 蓝底） */
+    --glass:        rgba(0,0,0,0.42);
+    --glass-light:  rgba(255,255,255,0.12);
+    --glass-border: rgba(255,255,255,0.16);
+    --glass-text:   rgba(255,255,255,0.95);
+    --glass-muted:  rgba(255,255,255,0.62);
+    --glass-dim:    rgba(255,255,255,0.4);
+
+    /* 文字 */
+    --text:         #FFFFFF;
+    --text-dark:    #1A1A1F;
+
+    /* 披萨色（暖色，在蓝底上跳出来） */
+    --crust:        #F5B969;          /* 披萨面（顶部 crust） */
+    --crust-side:   #C8843F;          /* 3D 侧边带 */
+    --crust-deep:   #8B5A2B;
+    --cheese:       #FFD23F;
+    --tomato:       #FF3B30;
+    --basil:        #6BA86B;
+
+    /* 强调色 */
+    --accent:       #FFD23F;          /* 主按钮 = 亮黄 */
+    --accent-deep:  #F0B800;
+
+    /* 阴影 */
+    --shadow:       0 12px 30px rgba(0,0,0,0.35);
+    --shadow-sm:    0 4px 12px rgba(0,0,0,0.25);
+    --shadow-plate: 0 6px 0 var(--crust-side), 0 14px 32px rgba(0,0,0,0.45);
+
+    /* 字体 */
+    --font-display: "Space Grotesk", "Noto Sans SC", "PingFang SC", sans-serif;
+    --font-body:    "Inter", "Noto Sans SC", "PingFang SC", sans-serif;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    font-family: var(--font-body);
+    color: var(--text); background: var(--bg);
+  }
+  body {
+    /* 蓝底轻微渐变，让背景有空间感 */
+    background:
+      radial-gradient(ellipse at 30% 20%, rgba(255,255,255,0.08), transparent 50%),
+      radial-gradient(ellipse at 80% 80%, rgba(0,0,0,0.18), transparent 55%),
+      linear-gradient(135deg, var(--bg-glow) 0%, var(--bg) 50%, var(--bg-deep) 100%);
+  }
+  .app { display: flex; flex-direction: column; height: 100vh; }
+
+  .main { flex: 1; display: flex; min-height: 0; }
+
+  /* ==== Rank dock：钉在墙上的浮层，默认 Top3，可展开 ==== */
+  .rank {
+    position: absolute;
+    left: 16px;
+    top: 14px;
+    z-index: 26;
+    /* 55 寸 1080p：250px 宽 + 方形卡 = 一屏只能露出 2 张多一点，Top3 被切 */
+    width: 204px;
+    max-height: calc(100% - 28px);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+  }
+  .rank > * { pointer-events: auto; }
+  .rhead h2 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.2px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    line-height: 1.25;
+  }
+  .rhead h2::before {
+    content: "";
+    width: 8px; height: 8px;
+    background: var(--accent);
+    border-radius: 50%;
+    box-shadow: 0 0 12px var(--accent);
+    flex: none;
+  }
+
+  /* ==== 待机重放与榜单联动 ==== */
+  .rank.has-now-playing .rlist .card:not(.now-playing) {
+    opacity: .4;
+    filter: saturate(.7);
+  }
+  .rlist .card { transition: transform .3s, opacity .3s; }
+  .rlist .card.now-playing {
+    box-shadow: 0 0 0 3px var(--accent), 0 0 30px 6px rgba(255,210,63,0.45);
+    border-radius: 14px;
+  }
+  .rlist .card.now-playing::before {
+    content: "Now replaying";
+    position: absolute;
+    left: 50%;
+    bottom: -11px;
+    transform: translateX(-50%);
+    z-index: 5;
+    font-family: var(--font-display);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .4px;
+    white-space: nowrap;
+    color: var(--text-dark);
+    background: var(--accent);
+    padding: 3px 10px;
+    border-radius: 999px;
+  }
+  /* 成品飞进榜单时，卡片弹一下作为承接 */
+  .rlist .card.rank-hit { animation: rank-hit .65s cubic-bezier(.2,1.4,.35,1); }
+  @keyframes rank-hit {
+    0%   { transform: scale(1); }
+    35%  { transform: scale(1.14); }
+    100% { transform: scale(1); }
+  }
+  .ghost-fly {
+    position: fixed;
+    z-index: 60;
+    pointer-events: none;
+    transform-origin: center center;
+    transition: transform .8s cubic-bezier(.35,0,.2,1), opacity .8s ease-in;
+  }
+
+  .rank-panel {
+    display: flex;
+    /* 榜单现在常驻显示，背后又是一直在动的披萨墙：
+       backdrop-filter 会每帧重采样整块面板，集显上很贵。改用不透明底色。 */
+    background: rgba(11, 22, 64, 0.92);
+    border: 1px solid var(--glass-border);
+    border-radius: 18px;
+    box-shadow: var(--shadow);
+    max-height: 100%;
+    flex-direction: column;
+    overflow: hidden;
+    width: 100%;
+  }
+  .rhead { padding: 10px 10px 8px; flex: none; }
+  .rhead-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .rhead h2 { font-size: 14px; line-height: 1.22; }
+  .tabs {
+    display: flex; gap: 2px; margin-top: 8px;
+    background: rgba(0,0,0,0.3);
+    border-radius: 10px; padding: 3px;
+  }
+  .app.review .tabs button { font-size: 11px; letter-spacing: 0; }
+  .tabs button {
+    flex: 1; border: none;
+    background: transparent;
+    color: var(--glass-muted); font-size: 11px; padding: 7px 0;
+    cursor: pointer; font-weight: 600; font-family: var(--font-display);
+    border-radius: 8px;
+    letter-spacing: 0.2px;
+    transition: background .15s, color .15s;
+  }
+  .tabs button.on { background: var(--accent); color: var(--text-dark); }
+  .tabs button.mod-tab { display: none; }
+  .app.review .tabs button.mod-tab { display: block; }
+  .tabs button.mod-tab.on { background: var(--tomato); color: #fff; }
+  .review-bar {
+    display: none;
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(255,59,48,0.18);
+    border: 1px solid rgba(255,59,48,0.35);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.4;
+    font-family: var(--font-display);
+  }
+  .app.review .review-bar { display: block; }
+
+  /* 打印设置只在审核模式露出，顾客看不到 */
+  .print-setup { display: none; }
+  .app.review .print-setup {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.14);
+    font-family: var(--font-display);
+    font-size: 12px;
+    color: #fff;
+  }
+  .print-row { display: flex; flex-direction: column; gap: 5px; }
+  .print-row label { font-weight: 700; letter-spacing: .2px; opacity: .8; }
+  .print-setup select {
+    width: 100%;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(0,0,0,0.35);
+    color: #fff;
+    padding: 7px 8px;
+    font-size: 12px;
+    font-family: var(--font-display);
+  }
+  .print-check {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-weight: 700;
+    opacity: .9;
+  }
+  .print-check input { width: 16px; height: 16px; }
+  .print-hint {
+    font-size: 11px;
+    line-height: 1.45;
+    opacity: .7;
+    font-weight: 500;
+  }
+  .print-setup button {
+    border: none;
+    border-radius: 8px;
+    padding: 8px 0;
+    background: rgba(255,255,255,0.18);
+    color: #fff;
+    font-weight: 700;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: var(--font-display);
+  }
+  .print-setup button:active { transform: scale(.98); }
+  .review-bar button {
+    margin-top: 8px;
+    width: 100%;
+    border: none;
+    border-radius: 8px;
+    padding: 9px 0;
+    background: rgba(255,255,255,0.18);
+    color: #fff;
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: var(--font-display);
+  }
+  .review-bar button:active { transform: scale(.98); }
+  .app.review .rank-panel {
+    box-shadow: 0 0 0 2px rgba(255,59,48,0.55), var(--shadow);
+  }
+  .rlist {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 8px 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .rlist::-webkit-scrollbar { width: 4px; }
+  .rlist::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+  .rlist .rank-empty {
+    color: rgba(255,255,255,.55);
+    font-size: 13px;
+    padding: 16px 2px;
+    line-height: 1.5;
+    font-weight: 600;
+  }
+
+  /* 单列紧凑卡：固定高度，1080p 一屏能完整露出 Top3+ */
+  .rlist .card {
+    flex: none;
+    width: 100%;
+    height: 132px;
+    aspect-ratio: auto;
+    margin-bottom: 0;
+    border-radius: 12px;
+    display: block;
+    overflow: visible;
+  }
+  .rlist .card canvas {
+    /* 必须写死等宽高等像素：width:auto 会回落到 canvas 固有 240px，
+       再配 height:88% 就变成 240×116 的扁椭圆，还会撑出左边缘。
+       通用规则 .card canvas { width/height:100% } 也是同一类坑。 */
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    right: auto;
+    bottom: auto;
+    transform: translate(-50%, -50%);
+    width: 110px;
+    height: 110px;
+    /* 不能用 border-radius 裁圆：披萨本来就画在透明画布上，裁了没好处，
+       却会削掉饼底手绘的不规则边，还把右下角的签名整个切没。 */
+    /* 榜单常驻可见且卡片数量不封顶，drop-shadow 会按张数累加 paint 成本，这里不做投影 */
+    filter: none;
+    border-radius: 0;
+  }
+  .rlist.is-top .card:first-child {
+    box-shadow: 0 0 22px 4px rgba(255,210,63,0.32), 0 6px 18px rgba(0,0,0,0.3);
+  }
+  .rlist.is-top .card:first-child .rankno::after {
+    content: "👑";
+    position: absolute;
+    top: -10px;
+    right: -8px;
+    font-size: 12px;
+    filter: drop-shadow(0 2px 6px rgba(0,0,0,0.35));
+  }
+
+  .card {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1;
+    background: transparent;
+    border-radius: 16px;
+    margin-bottom: 0;
+    overflow: visible;
+    box-shadow: none;
+    transition: transform .15s;
+    cursor: pointer;
+  }
+  .card:hover { transform: translateY(-2px); }
+  .card .rankno {
+    position: absolute; top: 6px; left: 6px; z-index: 3;
+    width: auto; height: auto; min-width: 0;
+    padding: 3px 6px;
+    border-radius: 7px;
+    background: rgba(26,26,31,0.82); color: var(--accent);
+    font-size: 10px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-display);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+    letter-spacing: 0.2px;
+    line-height: 1.1;
+  }
+  .card:nth-child(1) .rankno { background: var(--accent); color: var(--text-dark); }
+  .card:nth-child(2) .rankno { background: rgba(255,255,255,0.92); color: var(--text-dark); }
+  .card:nth-child(3) .rankno { background: var(--basil); color: #fff; }
+  .card canvas {
+    width: 100%; height: 100%;
+    display: block;
+    background: transparent;
+    border-radius: 12px;
+    filter: drop-shadow(0 10px 18px rgba(0,0,0,0.35));
+  }
+  .card .card-meta {
+    position: absolute; left: 8px; top: 8px; right: auto; bottom: auto; z-index: 3;
+    display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start;
+    gap: 6px;
+    padding: 0;
+    background: none;
+    border-radius: 0;
+    pointer-events: none;
+  }
+  .card.has-rank .card-meta { top: 28px; }
+  .card .pname { display: none; }
+  .card .likebtn {
+    pointer-events: auto;
+    flex: none;
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: 11px; color: var(--text-dark); background: var(--accent);
+    padding: 4px 7px; border-radius: 7px; border: none;
+    cursor: pointer; font-weight: 800; font-family: var(--font-display);
+    box-shadow: 0 3px 10px rgba(0,0,0,0.25);
+    transition: transform .2s, box-shadow .2s;
+    user-select: none; -webkit-user-select: none;
+  }
+  .card .likebtn.charging {
+    animation: charge-btn 0.8s ease-in forwards;
+  }
+  @keyframes charge-btn {
+    0%   { transform: scale(1);    box-shadow: 0 3px 10px rgba(0,0,0,0.25); }
+    60%  { transform: scale(1.25); box-shadow: 0 0 14px 3px rgba(255,210,63,0.5); }
+    85%  { transform: scale(1.4);  box-shadow: 0 0 22px 6px rgba(255,210,63,0.65); }
+    100% { transform: scale(1.5);  box-shadow: 0 0 30px 10px rgba(255,210,63,0.75); }
+  }
+  .card .likebtn.popped {
+    animation: charge-pop .4s ease-out forwards;
+  }
+  .card .likebtn svg { width: 11px; height: 11px; }
+  .card .rmbtn {
+    pointer-events: auto;
+    flex: none;
+    display: none;
+    border: none;
+    background: var(--tomato);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 800;
+    padding: 6px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: var(--font-display);
+  }
+  .app.review .card .rmbtn { display: inline-flex; }
+  .app.review .rlist .card .rmbtn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 3;
+  }
+  .rlist .card.removed-card .card-meta {
+    top: 8px;
+  }
+  .card.removed-card { outline: 2px dashed rgba(255,59,48,0.55); outline-offset: 2px; }
+  .card.spot { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  /* ==== Stage：全幅作品墙 ==== */
+  /* ==== Stage：纯蓝底，披萨盘子带 3D 错位带 ==== */
+  .stage {
+    flex: 1; position: relative; min-width: 0;
+    overflow: hidden;
+  }
+  .viewport {
+    position: absolute; inset: 0;
+    overflow: hidden; cursor: grab; touch-action: none;
+    z-index: 1;
+  }
+  .viewport.grabbing { cursor: grabbing; }
+  .world {
+    position: absolute; top: 0; left: 0;
+    transform-origin: 0 0; will-change: transform;
+  }
+
+  /* ==== 披萨盘子 ====
+     已画：不规则轮廓由 canvas 画
+     空盘：同样用手绘不规则虚线轮廓（empty-ring canvas），不再用正圆 CSS border
+  */
+  .cell {
+    position: absolute;
+    display: flex; align-items: center; justify-content: center;
+    overflow: visible;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+  }
+  .cell.filled {
+    animation: float-y 5s ease-in-out infinite;
+  }
+  .cell.filled:nth-of-type(odd) { animation-delay: -2.5s; animation-duration: 5.8s; }
+  .cell.focus {
+    z-index: 8;
+  }
+  .cell canvas {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    border-radius: 0; touch-action: none;
+  }
+  .cell canvas.empty-ring {
+    pointer-events: none;
+    z-index: 0;
+  }
+  .cell .empty-label {
+    position: relative; z-index: 1;
+    color: rgba(255,255,255,0.7); font-size: 16px; pointer-events: none;
+    font-weight: 600; text-align: center; line-height: 1.7;
+    letter-spacing: 0.3px;
+    font-family: var(--font-display);
+  }
+  .cell .empty-label b { color: var(--accent); font-weight: 700; }
+  .cell .namebar { display: none; } /* 旧文字名条废弃：改用手写签名 */
+  /* 签名落在披萨外侧右下，不与饼面重叠
+     注意：必须覆盖 .cell canvas { inset:0 }，否则会粘在顶部 */
+  .cell canvas.sig-mark {
+    inset: auto;
+    top: auto;
+    right: -26%;
+    left: auto;
+    bottom: 2%;
+    width: 46%;
+    height: 20%;
+    pointer-events: none;
+    z-index: 4;
+  }
+  .cell .sig-hint {
+    position: absolute;
+    inset: auto;
+    top: auto;
+    right: -26%;
+    left: auto;
+    bottom: 2%;
+    width: 46%;
+    height: 20%;
+    border: 1.5px dashed rgba(255,255,255,0.45);
+    border-radius: 6px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .2s;
+    z-index: 3;
+  }
+  .cell.signing .sig-hint { opacity: 1; }
+  .cell .likepill {
+    position: absolute; top: -10px; right: -10px;
+    background: var(--tomato); color: #fff;
+    font-size: 14px; font-weight: 800; padding: 5px 12px;
+    border-radius: 999px; display: flex; align-items: center; gap: 4px;
+    cursor: pointer;
+    font-family: var(--font-display);
+    box-shadow: 0 4px 10px rgba(255,59,48,0.4);
+    transition: transform .2s, box-shadow .2s;
+    user-select: none; -webkit-user-select: none;
+  }
+  .cell .likepill.charging {
+    animation: charge-grow 0.8s ease-in forwards;
+  }
+  @keyframes charge-grow {
+    0%   { transform: scale(1);    box-shadow: 0 4px 10px rgba(255,59,48,0.4); }
+    60%  { transform: scale(1.35); box-shadow: 0 0 18px 4px rgba(255,59,48,0.6); }
+    85%  { transform: scale(1.5);  box-shadow: 0 0 28px 8px rgba(255,59,48,0.7); }
+    100% { transform: scale(1.6);  box-shadow: 0 0 36px 12px rgba(255,59,48,0.8); }
+  }
+  @keyframes charge-pop {
+    0%   { transform: scale(1.6); opacity: 1; }
+    30%  { transform: scale(0.6); opacity: 1; }
+    60%  { transform: scale(1.15); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .cell .likepill.popped {
+    animation: charge-pop .4s ease-out forwards;
+  }
+  .like-burst {
+    position: fixed; pointer-events: none; z-index: 60;
+    font-size: 18px; opacity: 1;
+    animation: burst-fly .7s ease-out forwards;
+  }
+  @keyframes burst-fly {
+    0%   { opacity: 1; transform: translate(0, 0) scale(1); }
+    100% { opacity: 0; transform: translate(var(--bx), var(--by)) scale(0.4); }
+  }
+  .cell .mod-remove {
+    display: none;
+    position: absolute;
+    top: -10px; left: -10px;
+    z-index: 6;
+    width: 40px; height: 40px;
+    border: none; border-radius: 50%;
+    background: var(--tomato); color: #fff;
+    font-size: 20px; font-weight: 800;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(255,59,48,0.45);
+    font-family: var(--font-display);
+  }
+  .app.review .cell.filled .mod-remove { display: flex; align-items: center; justify-content: center; }
+  .cell .mod-remove:active { transform: scale(.94); }
+  /* 补打按钮：跟下架键并排，同样只在审核模式露出 */
+  .cell .mod-print {
+    display: none;
+    position: absolute;
+    top: -10px; left: 36px;
+    z-index: 6;
+    width: 40px; height: 40px;
+    padding: 0;
+    border: none; border-radius: 50%;
+    background: var(--text-dark); color: #fff;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+  }
+  .cell .mod-print svg { width: 20px; height: 20px; display: block; }
+  .app.review .cell.filled .mod-print { display: flex; align-items: center; justify-content: center; }
+  .cell .mod-print:active { transform: scale(.94); }
+  /* 领位高亮：黄色光环脉冲（跟手绘轮廓，不用正圆描边） */
+  .cell.target { animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse {
+    0%,100% { filter: drop-shadow(0 0 0 transparent); }
+    50%     { filter: drop-shadow(0 0 16px var(--accent)); }
+  }
+  .cell.spotcell {
+    filter: drop-shadow(0 0 10px var(--accent));
+    animation: float-y 5s ease-in-out infinite;
+  }
+  @keyframes float-y {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-6px); }
+  }
+
+  /* ==== 工具栏 + 环形色盘 ==== */
+  .toolbar {
+    position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%) translateY(calc(100% + 30px));
+    width: max-content;
+    display: flex; align-items: center; gap: 14px;
+    background: var(--glass);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: 18px;
+    padding: 14px 18px;
+    box-shadow: var(--shadow);
+    z-index: 25; flex-wrap: wrap; justify-content: center;
+    max-width: calc(100% - 32px);
+    opacity: 0; pointer-events: none;
+    transition: transform .35s cubic-bezier(.2,.9,.3,1), opacity .3s;
+  }
+  .app.drawing .toolbar {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1; pointer-events: auto;
+  }
+  .color-picker {
+    position: relative;
+    width: 142px;
+    height: 128px;
+    flex: none;
+  }
+  .wheel-wrap {
+    position: absolute;
+    left: 48px; top: 50%;
+    width: 72px; height: 72px;
+    transform: translate(-50%, -50%);
+    z-index: 1;
+  }
+  .wheel-ring {
+    position: absolute; inset: 0;
+    border-radius: 50%;
+    background: conic-gradient(
+      from 0deg,
+      #FF3B30 0deg,
+      #FF8C42 40deg,
+      #FFD23F 80deg,
+      #6BA86B 130deg,
+      #00B8D9 180deg,
+      #3D5FFF 230deg,
+      #9C7BAA 280deg,
+      #FF6B9D 320deg,
+      #FF3B30 360deg
+    );
+    -webkit-mask: radial-gradient(farthest-side, transparent 52%, #000 53%);
+    mask: radial-gradient(farthest-side, transparent 52%, #000 53%);
+    cursor: crosshair;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+    touch-action: none;
+  }
+  .wheel-center {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 28px; height: 28px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: #FF3B30;
+    border: 3px solid rgba(255,255,255,0.92);
+    box-shadow: 0 3px 10px rgba(0,0,0,0.35);
+    pointer-events: none;
+  }
+  /* 默认色：围成一圈，不竖排 */
+  .swatches {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+  }
+  .sw {
+    position: absolute;
+    width: 24px; height: 24px;
+    margin: -12px 0 0 -12px;
+    border-radius: 50%;
+    cursor: pointer;
+    pointer-events: auto;
+    transition: transform .12s, box-shadow .12s;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.35);
+    border: 2px solid rgba(255,255,255,0.35);
+  }
+  .sw.on {
+    transform: scale(1.22);
+    box-shadow: 0 0 0 3px var(--accent), 0 4px 12px rgba(0,0,0,0.35);
+  }
+  .divider { width: 1px; height: 72px; background: var(--glass-border); margin: 0 4px; }
+  .tbtn {
+    border: none; background: rgba(255,255,255,0.15);
+    color: var(--text); font-size: 16px; font-weight: 600;
+    padding: 13px 22px; border-radius: 12px; cursor: pointer;
+    display: flex; align-items: center; gap: 6px; white-space: nowrap;
+    font-family: var(--font-display);
+    letter-spacing: 0.2px;
+    transition: background .15s, transform .1s;
+  }
+  .tbtn:hover { background: rgba(255,255,255,0.25); }
+  .tbtn:active { transform: scale(.97); }
+  .tbtn.primary { background: var(--accent); color: var(--text-dark); }
+  .tbtn.primary:hover { background: var(--accent-deep); }
+  .tbtn.on { background: var(--basil); color: #fff; }
+  .brush { display: flex; align-items: center; gap: 10px; color: var(--glass-text); font-size: 15px; font-weight: 600; font-family: var(--font-display); letter-spacing: 0.3px; }
+  .brush input { width: 110px; height: 26px; accent-color: var(--accent); }
+
+  /* ==== Modal ==== */
+  .overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(8px);
+    display: none; align-items: center; justify-content: center; z-index: 50;
+  }
+  .overlay.show { display: flex; }
+  .modal {
+    background: var(--bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 24px; padding: 28px; width: 400px; max-width: 92%;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    text-align: center;
+  }
+  .modal h3 {
+    margin: 0 0 6px;
+    font-family: var(--font-display);
+    font-size: 22px; font-weight: 700;
+    letter-spacing: -0.3px;
+  }
+  .modal p { margin: 0 0 16px; font-size: 13px; color: var(--glass-muted); }
+  .modal .preview {
+    width: 128px; height: 128px; border-radius: 12px;
+    margin: 0 auto 14px;
+    background: #efe4cf;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+  }
+  .sig-label {
+    font-size: 14px; font-weight: 700; color: var(--accent);
+    letter-spacing: 0.4px; margin-bottom: 8px;
+    font-family: var(--font-display);
+  }
+  .sig-pad-wrap {
+    position: relative;
+    width: 100%;
+    height: 110px;
+    margin: 0 0 12px;
+    border-radius: 14px;
+    /* 做成「纸」：深墨(#1A1A1F)画在深蓝板子上几乎看不见，
+       米色底既跟上方预览一致，也跟印出来的白卡一致 */
+    background: #efe4cf;
+    border: 1.5px dashed rgba(26,26,31,0.28);
+    overflow: hidden;
+  }
+  .sig-pad-wrap canvas {
+    width: 100%; height: 100%;
+    display: block;
+    touch-action: none;
+    cursor: crosshair;
+  }
+  .sig-pad-wrap .sig-clear {
+    position: absolute; top: 8px; right: 8px;
+    border: none; border-radius: 8px;
+    background: rgba(26,26,31,0.55); color: #fff;
+    font-size: 11px; font-weight: 700;
+    padding: 6px 10px; cursor: pointer;
+    font-family: var(--font-display);
+  }
+  .modal input { display: none; }
+  .modal .mrow { display: flex; gap: 10px; }
+  .modal .mrow button {
+    flex: 1; padding: 12px;
+    border: none;
+    border-radius: 12px;
+    font-size: 16px; font-weight: 700; cursor: pointer;
+    font-family: var(--font-display);
+    letter-spacing: 0.2px;
+    transition: transform .1s, background .15s;
+  }
+  .modal .mrow button:active { transform: scale(.97); }
+  /* 三个按钮时弹窗放不下 16px 的文字，收一档并禁止折行 */
+  .modal .mrow .cancel { flex: 0 0 auto; padding-left: 18px; padding-right: 18px; }
+  .modal .mrow.three button { font-size: 14px; padding: 12px 8px; white-space: nowrap; }
+  .modal .mrow.three .cancel { padding-left: 12px; padding-right: 12px; }
+  .modal .cancel { background: rgba(255,255,255,0.12); color: var(--text); }
+  .modal .cancel:hover { background: rgba(255,255,255,0.2); }
+  .modal .ok { background: var(--accent); color: var(--text-dark); }
+  .modal .ok:hover { background: var(--accent-deep); }
+  .modal .ok.alt { background: rgba(255,210,63,0.22); color: var(--text); }
+  .modal .ok.alt:hover { background: rgba(255,210,63,0.34); }
+  .qr {
+    width: 80px; height: 80px; margin: 16px auto 0;
+    background:
+      conic-gradient(var(--text) 25%, var(--bg) 0 50%, var(--text) 0 75%, var(--bg) 0) 0 0 / 14px 14px;
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+  }
+  .track-note {
+    margin-top: 12px; font-size: 11px; color: var(--glass-text);
+    background: rgba(255,210,63,0.12);
+    border-radius: 10px; padding: 8px 10px; line-height: 1.5;
+    font-weight: 500;
+    letter-spacing: 0.2px;
+  }
+
+  /* ==== 心形飘动：emoji 配蓝底好看 ==== */
+  .heart {
+    position: fixed; pointer-events: none; z-index: 60;
+    font-size: 26px;
+    animation: floatup 1.2s ease-out forwards;
+  }
+  @keyframes floatup {
+    0%   { opacity: 1; transform: translateY(0) rotate(0); }
+    100% { opacity: 0; transform: translateY(-150px) rotate(25deg) scale(1.5); }
+  }
+
+  /* ==== Toast ==== */
+  .toast {
+    position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%);
+    background: var(--text); color: var(--text-dark);
+    font-size: 17px; font-weight: 700;
+    padding: 14px 28px; border-radius: 12px; z-index: 70;
+    opacity: 0; transition: opacity .3s; pointer-events: none;
+    box-shadow: var(--shadow);
+    font-family: var(--font-display);
+    letter-spacing: 0.3px;
+  }
+  .toast.show { opacity: 1; }
+
+  .app.idle.drawing .toolbar { opacity: 0; pointer-events: none; }
+  /* 待机只讲重放故事，榜单留给披萨墙本身 —— 彻底不挡盘子 */
+  .app.idle .rank {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-12px);
+    transition: opacity .4s ease, transform .4s ease;
+  }
+  .app:not(.idle) .rank {
+    transition: opacity .35s ease, transform .35s ease;
+  }
+
+  /* 待机时压暗墙上的点赞泡，别和重放抢注意力 */
+  .app.idle .cell .likepill { opacity: .35; }
+
+  /* ==== 待机吸引态 ==== */
+  .attract {
+    position: absolute; inset: 0;
+    z-index: 28;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .55s ease;
+    background:
+      radial-gradient(ellipse at 50% 50%, rgba(6,14,48,0.5) 0%, rgba(6,14,48,0.28) 48%, rgba(6,14,48,0.1) 72%, transparent 86%);
+  }
+  /* 待机时压暗空盘文案，别和大标题抢读 */
+  .app.idle .cell .empty-label { opacity: .28; }
+  .app.idle .attract {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .attract-stage {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(24px, 4vw, 72px);
+    flex-wrap: wrap;
+    padding: 0 40px;
+  }
+  /* 幽灵画笔：自动作画的大盘子 */
+  .ghost-wrap {
+    position: relative;
+    width: min(72vh, 820px, 44vw);
+    aspect-ratio: 1;
+    flex: none;
+    transform: translateY(16px) scale(.94);
+    opacity: 0;
+    transition: transform .6s cubic-bezier(.2,.9,.3,1), opacity .5s;
+  }
+  .app.idle .ghost-wrap { transform: translateY(0) scale(1); opacity: 1; }
+  .ghost-wrap canvas {
+    width: 100%; height: 100%;
+    display: block;
+    filter: drop-shadow(0 18px 40px rgba(0,0,0,0.4));
+  }
+  /* 看不见的手：笔尖光点跟着笔迹走 */
+  .ghost-brush {
+    position: absolute;
+    width: 22px; height: 22px;
+    margin: -11px 0 0 -11px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.92);
+    box-shadow: 0 0 0 5px rgba(255,255,255,0.28), 0 0 22px 6px rgba(255,210,63,0.6);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .2s;
+  }
+  .ghost-wrap.drawing .ghost-brush { opacity: 1; }
+  /* 告诉路人这是真人刚画的，不是屏保动画 */
+  .ghost-caption {
+    position: absolute;
+    left: 3%;
+    bottom: 1%;
+    white-space: nowrap;
+    font-size: clamp(13px, 1.15vw, 17px);
+    font-weight: 600;
+    letter-spacing: .3px;
+    color: rgba(255,255,255,0.62);
+    text-shadow: 0 2px 10px rgba(6,14,48,0.9);
+    pointer-events: none;
+  }
+  .ghost-caption b { color: var(--accent); font-weight: 800; }
+
+  .attract-card {
+    text-align: left;
+    padding: 36px 52px;
+    max-width: 600px;
+    background: radial-gradient(ellipse at 50% 50%, rgba(6,14,48,0.85) 0%, rgba(6,14,48,0.62) 36%, rgba(6,14,48,0.22) 56%, transparent 72%);
+    border-radius: 32px;
+    /* 墙上的作品会透到文字后面，加投影保证任何底色下都读得清 */
+    text-shadow: 0 2px 12px rgba(6,14,48,0.95), 0 0 26px rgba(6,14,48,0.8);
+    transform: translateY(18px) scale(.95);
+    transition: transform .6s cubic-bezier(.2,.9,.3,1);
+  }
+  .app.idle .attract-card { transform: translateY(0) scale(1); }
+  .attract-kicker {
+    font-family: var(--font-display);
+    font-size: 17px; font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 16px;
+  }
+  .attract h1 {
+    margin: 0 0 12px;
+    font-family: var(--font-display);
+    font-size: clamp(36px, 3.8vw, 60px);
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: -1.2px;
+    color: #fff;
+    text-shadow: 0 8px 32px rgba(0,0,0,0.45);
+  }
+  @media (max-aspect-ratio: 1/1) {
+    .attract-stage { flex-direction: column; gap: 20px; }
+    .attract-card { text-align: center; }
+    .ghost-wrap { width: min(56vh, 640px); }
+  }
+  .attract-counter {
+    font-family: var(--font-display);
+    font-size: clamp(18px, 2vw, 26px);
+    font-weight: 600;
+    color: rgba(255,255,255,0.7);
+    margin-bottom: 28px;
+    letter-spacing: 0.3px;
+  }
+  .attract-counter strong {
+    color: var(--accent);
+    font-weight: 800;
+  }
+  .attract-cta {
+    border: none;
+    background: var(--accent);
+    color: var(--text-dark);
+    font-family: var(--font-display);
+    font-size: clamp(22px, 2.5vw, 30px);
+    font-weight: 700;
+    padding: 20px 52px;
+    border-radius: 16px;
+    cursor: pointer;
+    box-shadow: 0 12px 36px rgba(0,0,0,0.4);
+    transition: transform .12s, background .15s;
+    animation: attract-pulse 2.4s ease-in-out infinite;
+    text-shadow: none;
+  }
+  .attract-cta:hover { background: var(--accent-deep); }
+  .attract-cta:active { transform: scale(.97); }
+  .attract-tap {
+    margin-top: 18px;
+    font-size: 16px;
+    color: rgba(255,255,255,0.5);
+    font-weight: 500;
+    letter-spacing: 0.3px;
+  }
+  @keyframes attract-pulse {
+    0%, 100% { box-shadow: 0 12px 36px rgba(0,0,0,0.4), 0 0 0 0 rgba(255,210,63,0.5); }
+    50%      { box-shadow: 0 12px 36px rgba(0,0,0,0.4), 0 0 0 18px rgba(255,210,63,0); }
+  }
+
+  /* 55 寸会议平板 / 1080p+：主视野放大披萨、工具条更好点 */
+  @media (min-width: 1400px) and (min-height: 800px) {
+    .cell .empty-label { font-size: 18px; }
+    .toolbar { padding: 16px 22px; gap: 16px; border-radius: 20px; }
+    .tbtn { font-size: 17px; padding: 14px 24px; min-height: 52px; border-radius: 14px; }
+    .brush { font-size: 16px; }
+    .brush input { width: 128px; height: 28px; }
+    .color-picker { width: 152px; height: 136px; }
+    .sw { width: 28px; height: 28px; margin: -14px 0 0 -14px; }
+    .wheel-wrap { width: 78px; height: 78px; }
+    .cell .likepill { font-size: 15px; padding: 8px 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="main">
+    <section class="stage">
+      <div class="viewport" id="viewport">
+        <div class="world" id="world"></div>
+      </div>
+
+      <aside class="rank" id="rankDock">
+        <div class="rank-panel" id="rankPanel">
+          <div class="rhead">
+            <div class="rhead-top">
+              <h2 id="rankTitle">If I were a pizza chef</h2>
+            </div>
+            <div class="tabs" id="rankTabs">
+              <button data-tab="top" class="on">Top</button>
+              <button data-tab="new">New</button>
+              <button data-tab="discover">Random</button>
+              <button data-tab="removed" class="mod-tab">Removed</button>
+            </div>
+            <div class="review-bar" id="reviewBar">
+              Review mode · tap ✕ to take down a pizza
+              <button type="button" id="exitReview">Done reviewing</button>
+            </div>
+            <div class="print-setup" id="printSetup">
+              <div class="print-row">
+                <label for="printerPick">Printer</label>
+                <select id="printerPick"></select>
+              </div>
+              <label class="print-check">
+                <input type="checkbox" id="printEnabled"> Printing on
+              </label>
+              <label class="print-check">
+                <input type="checkbox" id="printAuto"> Auto-print after each save
+              </label>
+              <div class="print-hint" id="printHint"></div>
+              <button type="button" id="printTest">Print a test card</button>
+            </div>
+          </div>
+          <div class="rlist" id="rlist"></div>
+        </div>
+      </aside>
+
+      <div class="attract" id="attract" aria-hidden="true">
+        <div class="attract-stage">
+          <div class="ghost-wrap">
+            <canvas id="ghostCanvas" width="640" height="640"></canvas>
+            <div class="ghost-brush" id="ghostBrush"></div>
+            <div class="ghost-caption" id="ghostCaption"></div>
+          </div>
+          <div class="attract-card">
+            <div class="attract-kicker">Pizza wall</div>
+            <h1>Make a pizza,<br>leave your mark</h1>
+            <div class="attract-counter" id="attractCounter"></div>
+            <button type="button" class="attract-cta" id="attractStart">Tap to start</button>
+            <div class="attract-tap">Touch anywhere to begin</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="color-picker">
+          <div class="swatches" id="swatches"></div>
+          <div class="wheel-wrap">
+            <div class="wheel-ring" id="wheelRing" title="Drag around the ring to mix a colour"></div>
+            <div class="wheel-center" id="wheelCenter"></div>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div class="brush">Brush <input type="range" id="brush" min="2" max="26" value="14"></div>
+        <button class="tbtn" id="undo">Undo</button>
+        <button class="tbtn" id="eraser">Eraser</button>
+        <div class="divider"></div>
+        <button class="tbtn primary" id="findseat">Start drawing</button>
+        <button class="tbtn" id="save">Save</button>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h3>Sign your pizza</h3>
+    <p>Your signature sits beside the pizza — it's part of the artwork.</p>
+    <canvas class="preview" id="preview" width="240" height="240"></canvas>
+    <div class="sig-label">Draw your signature</div>
+    <div class="sig-pad-wrap">
+      <canvas id="sigPad" width="640" height="220"></canvas>
+      <button type="button" class="sig-clear" id="clearSig">Clear</button>
+    </div>
+    <div class="mrow">
+      <button class="cancel" id="cancelSave">Cancel</button>
+      <button class="ok alt" id="saveOnly" style="display:none">Just save</button>
+      <button class="ok" id="confirmSave">Save &amp; print</button>
+    </div>
+    <div class="track-note">
+      Tip · Once you sign, your pizza goes straight up on the wall.
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const COLORS = ["#FF3B30","#1A1A1F","#6BA86B","#FF6B9D","#9C7BAA","#00B8D9","#FF8C42"];
+const CELL = 240;
+const SLOT = 310;
+const NAMES = ["Double Cheese","Hawaiian","Supreme","Garden Veggie","Bacon Crust","Pepperoni Party","Black Pepper Beef","Four Seasons","Margherita","Seafood Feast","Cheese Burst","Classic Italian"];
+
+let curColor = COLORS[0];
+let brushSize = 14;
+let erasing = false;
+let pizzas = [];
+let cells = [];
+let uid = 1;
+let spiralN = 0;
+const cellKey = new Map();
+let worldMinX = -SLOT, worldMinY = -SLOT, worldMaxX = SLOT * 2, worldMaxY = SLOT * 2;
+
+/* ==== 本地持久化（IndexedDB · 纯单机） ==== */
+const DB_NAME = "pizza-board";
+const DB_VER = 2;
+const RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 作品保留 30 天
+const DEMO_SEED = false; // 正式环境不种演示披萨
+const REC_KEEP = 30;          // 只为最近 N 张作品保留作画过程
+const REC_MAX_POINTS = 12000; // 单张录制的采样点上限
+let db = null;
+let dbReady = false;
+let saveTimer = null;
+let lastCleanupAt = 0;
+let recordingIds = new Set();
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VER);
+    req.onupgradeneeded = e => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains("meta")) d.createObjectStore("meta", { keyPath: "id" });
+      if (!d.objectStoreNames.contains("cells")) d.createObjectStore("cells", { keyPath: "key" });
+      if (!d.objectStoreNames.contains("pizzas")) d.createObjectStore("pizzas", { keyPath: "id" });
+      if (!d.objectStoreNames.contains("recordings")) d.createObjectStore("recordings", { keyPath: "id" });
+    };
+    req.onsuccess = e => { db = e.target.result; dbReady = true; resolve(db); };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function dbTx(stores, mode) {
+  return db.transaction(stores, mode);
+}
+
+function scheduleSave(delay = 600) {
+  if (!dbReady) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => { persistAll().catch(err => console.warn("save failed", err)); }, delay);
+}
+
+function scheduleSaveNow() {
+  if (!dbReady) return;
+  clearTimeout(saveTimer);
+  persistAll().catch(err => console.warn("save failed", err));
+}
+
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+async function purgeExpiredRecords() {
+  const cutoff = Date.now() - RETENTION_MS;
+  const expiredIds = new Set();
+  for (const p of pizzas) {
+    const t = p.removed ? (p.removedAt || p.created) : p.created;
+    if (t < cutoff) expiredIds.add(p.id);
+  }
+  if (!expiredIds.size) return 0;
+
+  pizzas = pizzas.filter(p => !expiredIds.has(p.id));
+  for (const cell of cells) {
+    if (cell.pizza && expiredIds.has(cell.pizza.id)) resetCellToEmpty(cell);
+  }
+
+  if (dbReady) {
+    const tx = dbTx(["pizzas"], "readwrite");
+    for (const id of expiredIds) tx.objectStore("pizzas").delete(id);
+    await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
+    await pruneRecordings();
+  }
+  lastCleanupAt = Date.now();
+  return expiredIds.size;
+}
+
+async function persistAll() {
+  if (!dbReady) return;
+  await purgeExpiredRecords();
+
+  const tx = dbTx(["meta", "cells", "pizzas"], "readwrite");
+  const metaStore = tx.objectStore("meta");
+  const cellStore = tx.objectStore("cells");
+  const pizzaStore = tx.objectStore("pizzas");
+
+  metaStore.put({ id: "app", spiralN, uid, lastCleanupAt, savedAt: Date.now() });
+
+  cellStore.clear();
+  for (const cell of cells) {
+    cellStore.put({
+      key: cell.g.r + "," + cell.g.c,
+      r: cell.g.r,
+      c: cell.g.c,
+      emptySeed: cell.emptySeed ?? null
+    });
+  }
+
+  pizzaStore.clear();
+  for (const p of pizzas) {
+    const cell = p.removed ? null : cells[p.cellIndex];
+    let artDataUrl = p._snap || null;
+    let sigDataUrl = p._sigSnap || null;
+    // toDataURL 是主线程同步 PNG 编码，墙一大就会卡在这。
+    // 只有画布真被改过才重编码，其余走上一次的缓存。
+    if (cell?.canvas) {
+      if (p._artDirty || !p._artUrl) {
+        try { p._artUrl = cell.canvas.toDataURL("image/png"); p._artDirty = false; } catch (_) {}
+      }
+      artDataUrl = p._artUrl || artDataUrl;
+    }
+    if (cell?.sigCanvas && p.signed) {
+      if (p._sigDirty || !p._sigUrl) {
+        try { p._sigUrl = cell.sigCanvas.toDataURL("image/png"); p._sigDirty = false; } catch (_) {}
+      }
+      sigDataUrl = p._sigUrl || sigDataUrl;
+    }
+    pizzaStore.put({
+      id: p.id,
+      gridR: p.gridR ?? cell?.g?.r ?? null,
+      gridC: p.gridC ?? cell?.g?.c ?? null,
+      likes: p.likes || 0,
+      created: p.created,
+      signed: !!p.signed,
+      drawn: !!p.drawn,
+      name: p.name || "",
+      removed: !!p.removed,
+      removedAt: p.removedAt || null,
+      crustSeed: p.crustSeed ?? cell?.crustSeed ?? null,
+      artDataUrl,
+      sigDataUrl
+    });
+  }
+
+  await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
+}
+
+/* ==== 作画过程的存取 ====
+   录制单独放一个 store，只保留最近 REC_KEEP 份，避免体积无限涨。 */
+function txDone(tx) {
+  return new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
+}
+
+async function saveRecording(pizza, cell) {
+  if (!dbReady || !cell?.rec) return;
+  const strokes = packStrokes(cell.rec.strokes);
+  if (strokes.length < 3) return; // 只有两三笔的，重放没看头
+  const rec = {
+    id: pizza.id,
+    created: pizza.created,
+    crustSeed: pizza.crustSeed ?? cell.crustSeed,
+    strokes,
+    sig: sigRec ? { w: sigPad.width, h: sigPad.height, strokes: packStrokes(sigRec.strokes) } : null
+  };
+  const tx = dbTx(["recordings"], "readwrite");
+  tx.objectStore("recordings").put(rec);
+  await txDone(tx);
+  recordingIds.add(pizza.id);
+  await pruneRecordings();
+}
+
+async function getRecording(id) {
+  if (!dbReady) return null;
+  const tx = dbTx(["recordings"], "readonly");
+  const r = tx.objectStore("recordings").get(id);
+  return new Promise((res) => {
+    r.onsuccess = () => res(r.result || null);
+    r.onerror = () => res(null);
+  });
+}
+
+async function loadRecordingIds() {
+  if (!dbReady) return;
+  const tx = dbTx(["recordings"], "readonly");
+  const r = tx.objectStore("recordings").getAllKeys();
+  recordingIds = await new Promise(res => {
+    r.onsuccess = () => res(new Set(r.result || []));
+    r.onerror = () => res(new Set());
+  });
+}
+
+async function pruneRecordings() {
+  if (!dbReady || !recordingIds.size) return;
+  const alive = new Set(pizzas.map(p => p.id));
+  const keep = new Set(
+    [...recordingIds].filter(id => alive.has(id)).sort((a, b) => b - a).slice(0, REC_KEEP)
+  );
+  const drop = [...recordingIds].filter(id => !keep.has(id));
+  if (!drop.length) return;
+  const tx = dbTx(["recordings"], "readwrite");
+  for (const id of drop) tx.objectStore("recordings").delete(id);
+  await txDone(tx);
+  recordingIds = keep;
+}
+
+async function loadPersistedState() {
+  const tx = dbTx(["meta", "cells", "pizzas"], "readonly");
+  const meta = await new Promise((res, rej) => {
+    const r = tx.objectStore("meta").get("app");
+    r.onsuccess = () => res(r.result || null);
+    r.onerror = () => rej(r.error);
+  });
+  const savedCells = await new Promise((res, rej) => {
+    const r = tx.objectStore("cells").getAll();
+    r.onsuccess = () => res(r.result || []);
+    r.onerror = () => rej(r.error);
+  });
+  const savedPizzas = await new Promise((res, rej) => {
+    const r = tx.objectStore("pizzas").getAll();
+    r.onsuccess = () => res(r.result || []);
+    r.onerror = () => rej(r.error);
+  });
+  await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
+  if (!meta && !savedCells.length && !savedPizzas.length) return null;
+  return { meta, cells: savedCells, pizzas: savedPizzas };
+}
+
+async function mountPizzaRecord(rec) {
+  if (rec.removed) {
+    const p = {
+      id: rec.id,
+      name: rec.name || "",
+      likes: rec.likes || 0,
+      cellIndex: -1,
+      cell: null,
+      gridR: rec.gridR,
+      gridC: rec.gridC,
+      created: rec.created,
+      drawn: !!rec.drawn,
+      signed: !!rec.signed,
+      removed: true,
+      removedAt: rec.removedAt || rec.created,
+      crustSeed: rec.crustSeed,
+      _snap: rec.artDataUrl || null,
+      _sigSnap: rec.sigDataUrl || null
+    };
+    pizzas.push(p);
+    if (rec.id >= uid) uid = rec.id + 1;
+    return;
+  }
+
+  const cell = getOrCreateCell(rec.gridR, rec.gridC);
+  makeCanvas(cell, rec.crustSeed || (1000 + ((rec.gridR * 97 + rec.gridC * 13) >>> 0)));
+  if (rec.artDataUrl) {
+    try {
+      const img = await loadImage(rec.artDataUrl);
+      cell.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      cell.ctx.clearRect(0, 0, CELL, CELL);
+      cell.ctx.drawImage(img, 0, 0, CELL, CELL);
+    } catch (_) {}
+  }
+  if (rec.signed && rec.sigDataUrl) {
+    try {
+      const sc = ensureSigLayer(cell);
+      const sigImg = await loadImage(rec.sigDataUrl);
+      const sctx = sc.getContext("2d");
+      sctx.clearRect(0, 0, sc.width, sc.height);
+      sctx.drawImage(sigImg, 0, 0, sc.width, sc.height);
+    } catch (_) {}
+  }
+
+  const idx = cells.indexOf(cell);
+  const p = {
+    id: rec.id,
+    name: rec.name || (rec.signed ? "signed" : ""),
+    likes: rec.likes || 0,
+    cellIndex: idx,
+    cell,
+    gridR: rec.gridR,
+    gridC: rec.gridC,
+    created: rec.created,
+    drawn: !!rec.drawn,
+    signed: !!rec.signed,
+    removed: false,
+    crustSeed: rec.crustSeed || cell.crustSeed
+  };
+  cell.pizza = p;
+  cell.filled = true;
+  cell.el.classList.add("filled");
+  cell.el.querySelector(".empty-label")?.remove();
+  cell.el.querySelector("canvas.empty-ring")?.remove();
+  cell.emptyRing = null;
+  if (cell.canvas && p.signed) cell.canvas.style.pointerEvents = "none";
+  pizzas.push(p);
+  renderLikePill(cell);
+  if (rec.id >= uid) uid = rec.id + 1;
+}
+
+async function restoreFromDisk(state) {
+  world.innerHTML = "";
+  cells = [];
+  cellKey.clear();
+  pizzas = [];
+  spiralN = state.meta?.spiralN ?? 0;
+  uid = state.meta?.uid ?? 1;
+  lastCleanupAt = state.meta?.lastCleanupAt ?? 0;
+
+  const savedCellMap = new Map(state.cells.map(c => [c.r + "," + c.c, c]));
+  for (const c of state.cells) {
+    const cell = getOrCreateCell(c.r, c.c);
+    if (c.emptySeed != null) {
+      cell.emptySeed = c.emptySeed;
+      ensureEmptyRing(cell, c.emptySeed);
+    }
+    savedCellMap.set(c.r + "," + c.c, c);
+  }
+
+  const sorted = [...state.pizzas].sort((a, b) => a.created - b.created);
+  for (const rec of sorted) await mountPizzaRecord(rec);
+
+  // 补空盘，保证至少 8 个可画位
+  ensureEmptySeats(8);
+}
+
+async function freshStart() {
+  for (let i = 0; i < 25; i++) {
+    const { r, c } = spiralRC(spiralN++);
+    getOrCreateCell(r, c);
+  }
+  if (DEMO_SEED) {
+    for (let i = 0; i < 9; i++) seedPizza(cells[i], i + 3);
+  }
+  ensureEmptySeats(8);
+}
+
+async function bootPersistence() {
+  try {
+    await openDB();
+    await loadRecordingIds();
+    const state = await loadPersistedState();
+    if (state) {
+      await restoreFromDisk(state);
+      const purged = await purgeExpiredRecords();
+      if (purged) scheduleSaveNow();
+      toast("Wall restored · " + visiblePizzas().length + " pizzas");
+    } else {
+      await freshStart();
+      scheduleSaveNow();
+    }
+  } catch (err) {
+    console.warn("IndexedDB unavailable, running in memory mode", err);
+    await freshStart();
+  }
+}
+
+const world = document.getElementById("world");
+const viewport = document.getElementById("viewport");
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+/** 不规则圆半径表（平滑后的抖动），同 seed 可复现 */
+function blobRadii(seed, n, jitter) {
+  const rng = mulberry32(seed >>> 0);
+  const raw = [];
+  for (let i = 0; i < n; i++) raw.push(1 + (rng() - 0.5) * 2 * jitter);
+  return raw.map((_, i) => {
+    const a = raw[(i - 1 + n) % n], b = raw[i], c = raw[(i + 1) % n];
+    return (a + b * 2 + c) / 4;
+  });
+}
+
+function traceBlob(ctx, cx, cy, baseR, radii) {
+  const n = radii.length;
+  for (let i = 0; i <= n; i++) {
+    const t = i % n;
+    const ang = (t / n) * Math.PI * 2 - Math.PI / 2;
+    const r = baseR * radii[t];
+    const x = cx + Math.cos(ang) * r;
+    const y = cy + Math.sin(ang) * r;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+}
+
+function makeCanvas(cell, seed) {
+  cell.el.querySelector("canvas.empty-ring")?.remove();
+  cell.emptyRing = null;
+  const cv = document.createElement("canvas");
+  cv.width = CELL; cv.height = CELL;
+  const ctx = cv.getContext("2d", { desynchronized: true, alpha: true });
+  cell.crustSeed = seed ?? cell.crustSeed ?? (1000 + cells.indexOf(cell) * 97);
+  drawCrust(ctx, cell.crustSeed);
+  cell.el.appendChild(cv);
+  cell.canvas = cv; cell.ctx = ctx;
+  bindDraw(cell);
+  return cv;
+}
+
+/** 空盘：轻微不规则虚线轮廓（比饼底更圆，只留一点手绘感） */
+function drawEmptyRing(ctx, seed) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, CELL, CELL);
+  const R = CELL / 2;
+  const outer = blobRadii(seed, 22, 0.055);
+  const rng = mulberry32(seed + 5);
+
+  // 淡底
+  ctx.beginPath();
+  traceBlob(ctx, R, R, R - 10, outer);
+  ctx.fillStyle = "rgba(255,255,255,0.08)";
+  ctx.fill();
+
+  // 沿轮廓画虚线：空隙略随机，形状接近正圆
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.setLineDash([]);
+  const n = outer.length;
+  const samples = 64;
+  for (let i = 0; i < samples; i++) {
+    if (rng() < 0.32) continue;
+    const t0 = i / samples;
+    const t1 = (i + 0.58 + rng() * 0.12) / samples;
+    const ang0 = t0 * Math.PI * 2 - Math.PI / 2;
+    const ang1 = t1 * Math.PI * 2 - Math.PI / 2;
+    const i0 = Math.floor(t0 * n) % n;
+    const i1 = Math.floor(t1 * n) % n;
+    const r0 = (R - 10) * outer[i0];
+    const r1 = (R - 10) * outer[i1];
+    ctx.beginPath();
+    ctx.moveTo(R + Math.cos(ang0) * r0, R + Math.sin(ang0) * r0);
+    ctx.lineTo(R + Math.cos(ang1) * r1, R + Math.sin(ang1) * r1);
+    ctx.strokeStyle = "rgba(255,255,255,0.4)";
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+  }
+}
+
+function ensureEmptyRing(cell, seed) {
+  if (cell.filled) return;
+  let cv = cell.el.querySelector("canvas.empty-ring");
+  if (!cv) {
+    cv = document.createElement("canvas");
+    cv.className = "empty-ring";
+    cv.width = CELL;
+    cv.height = CELL;
+    cell.el.insertBefore(cv, cell.el.firstChild);
+  }
+  cell.emptySeed = seed ?? cell.emptySeed ?? (2200 + cells.indexOf(cell) * 83);
+  drawEmptyRing(cv.getContext("2d"), cell.emptySeed);
+  cell.emptyRing = cv;
+  return cv;
+}
+
+/** 螺旋坐标：从 (0,0) 向外一圈圈长，已画区域始终挤在一起 */
+function spiralRC(n) {
+  if (n <= 0) return { r: 0, c: 0 };
+  let x = 0, y = 0, dx = 1, dy = 0, seg = 1, steps = 0, turns = 0;
+  for (let i = 0; i < n; i++) {
+    x += dx; y += dy;
+    steps++;
+    if (steps === seg) {
+      steps = 0;
+      const tx = dx; dx = -dy; dy = tx;
+      turns++;
+      if (turns === 2) { turns = 0; seg++; }
+    }
+  }
+  return { r: y, c: x };
+}
+
+function refreshWorldBounds() {
+  if (!cells.length) return;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const cell of cells) {
+    minX = Math.min(minX, cell.g.x);
+    minY = Math.min(minY, cell.g.y);
+    maxX = Math.max(maxX, cell.g.x + CELL);
+    maxY = Math.max(maxY, cell.g.y + CELL);
+  }
+  const pad = SLOT;
+  worldMinX = minX - pad;
+  worldMinY = minY - pad;
+  worldMaxX = maxX + pad;
+  worldMaxY = maxY + pad;
+}
+
+function getOrCreateCell(r, c) {
+  const key = r + "," + c;
+  if (cellKey.has(key)) return cellKey.get(key);
+  const g = {
+    r, c,
+    dist: Math.hypot(r, c),
+    ang: Math.atan2(r, c),
+    slotX: c * SLOT,
+    slotY: r * SLOT,
+    size: CELL,
+    x: c * SLOT + (SLOT - CELL) / 2,
+    y: r * SLOT + (SLOT - CELL) / 2
+  };
+  const el = document.createElement("div");
+  el.className = "cell";
+  el.style.left = g.x + "px";
+  el.style.top = g.y + "px";
+  el.style.width = CELL + "px";
+  el.style.height = CELL + "px";
+  el.innerHTML = '<div class="empty-label">Free plate<br>tap <b>Start drawing</b></div>';
+  el.addEventListener("click", e => {
+    if (panMoved) return;
+    const ci = Number(el.dataset.index);
+    const c2 = cells[ci];
+    if (!c2 || c2.filled) return;
+    const draft = typeof draftCell === "function" && draftCell();
+    if (draft) {
+      goToPlate(draft, "Finish this pizza first — then tap Save");
+      return;
+    }
+    e.stopPropagation();
+    if (!c2.canvas) makeCanvas(c2);
+    ensurePizza(c2);
+    activeCell = c2;
+    setDrawing(true);
+    focusCell(c2, 3200);
+    toast("Your plate is ready — start drawing!");
+  });
+  world.appendChild(el);
+  const cell = { el, g, filled: false, pizza: null, size: CELL };
+  el.dataset.index = String(cells.length);
+  cells.push(cell);
+  cellKey.set(key, cell);
+  ensureEmptyRing(cell, 2200 + ((r * 97 + c * 13) >>> 0));
+  refreshWorldBounds();
+  return cell;
+}
+
+/** 外圈始终补一圈空盘，墙可以一直往外长 */
+function expandFrontier() {
+  let minR = 0, maxR = 0, minC = 0, maxC = 0;
+  for (const cell of cells) {
+    minR = Math.min(minR, cell.g.r);
+    maxR = Math.max(maxR, cell.g.r);
+    minC = Math.min(minC, cell.g.c);
+    maxC = Math.max(maxC, cell.g.c);
+  }
+  for (let r = minR - 1; r <= maxR + 1; r++) {
+    for (let c = minC - 1; c <= maxC + 1; c++) {
+      if (r === minR - 1 || r === maxR + 1 || c === minC - 1 || c === maxC + 1) {
+        getOrCreateCell(r, c);
+      }
+    }
+  }
+}
+
+function ensureEmptySeats(n = 8) {
+  let guard = 0;
+  while (cells.filter(c => !c.filled).length < n && guard++ < 400) {
+    const { r, c } = spiralRC(spiralN++);
+    getOrCreateCell(r, c);
+  }
+  expandFrontier();
+}
+
+function viewCenterWorld() {
+  return {
+    x: (viewport.clientWidth / 2 - panX) / scale,
+    y: (viewport.clientHeight / 2 - panY) / scale
+  };
+}
+
+function nearestEmpty() {
+  ensureEmptySeats();
+  const v = viewCenterWorld();
+  let best = null, bestD = Infinity;
+  for (const cell of cells) {
+    if (cell.filled) continue;
+    const d = Math.hypot(cell.g.x + CELL / 2 - v.x, cell.g.y + CELL / 2 - v.y);
+    if (d < bestD) { bestD = d; best = cell; }
+  }
+  return best;
+}
+
+function drawCrust(ctx, seed, keepTransform) {
+  if (!keepTransform) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, CELL, CELL);
+  }
+  const R = CELL / 2;
+  const outer = blobRadii(seed, 22, 0.085);
+  const cheese = blobRadii(seed + 11, 22, 0.07);
+  const sauce = blobRadii(seed + 23, 18, 0.055);
+
+  // 软投影（手绘落在蓝底上）
+  ctx.save();
+  ctx.translate(3, 6);
+  ctx.beginPath();
+  traceBlob(ctx, R, R, R - 8, outer);
+  ctx.fillStyle = "rgba(0,0,0,0.22)";
+  ctx.fill();
+  ctx.restore();
+
+  // 外皮：不规则轮廓
+  ctx.beginPath();
+  traceBlob(ctx, R, R, R - 6, outer);
+  ctx.fillStyle = "#F5B969";
+  ctx.fill();
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.strokeStyle = "#C8843F";
+  ctx.lineWidth = 4;
+  ctx.stroke();
+  ctx.strokeStyle = "#8B5A2B";
+  ctx.lineWidth = 1.6;
+  ctx.globalAlpha = 0.55;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // 芝士层
+  ctx.beginPath();
+  traceBlob(ctx, R, R, R - 20, cheese);
+  ctx.fillStyle = "#FFD23F";
+  ctx.fill();
+
+  // 酱料淡底
+  ctx.beginPath();
+  traceBlob(ctx, R, R, R - 34, sauce);
+  ctx.fillStyle = "#FF3B30";
+  ctx.globalAlpha = 0.2;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // 边缘再甩几笔「手绘感」短线
+  const rng = mulberry32(seed + 7);
+  ctx.strokeStyle = "#B87333";
+  ctx.lineWidth = 1.4;
+  ctx.globalAlpha = 0.35;
+  for (let i = 0; i < 10; i++) {
+    const ang = rng() * Math.PI * 2;
+    const r0 = (R - 10) * (0.92 + rng() * 0.08);
+    const r1 = r0 + 4 + rng() * 5;
+    ctx.beginPath();
+    ctx.moveTo(R + Math.cos(ang) * r0, R + Math.sin(ang) * r0);
+    ctx.lineTo(R + Math.cos(ang) * r1, R + Math.sin(ang) * r1);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function clipToCrust(ctx, seed) {
+  const R = CELL / 2;
+  const cheese = blobRadii((seed ?? 1) + 11, 22, 0.07);
+  ctx.beginPath();
+  traceBlob(ctx, R, R, R - 22, cheese);
+  ctx.clip();
+}
+
+/* 撤销：每一笔落下前存一帧，栈深 12 足够门店场景。
+   用离屏 canvas 做快照而不是 getImageData——后者要把像素从 GPU 回读到 CPU，
+   在 desynchronized 画布上会同步等待，正好卡在落笔那一刻。
+   快照 canvas 复用一个池子，避免每笔都新建 240×240 的位图。 */
+const UNDO_MAX = 12;
+const undoPool = [];
+
+function takeUndoCanvas() {
+  const cv = undoPool.pop() || document.createElement("canvas");
+  cv.width = CELL;
+  cv.height = CELL;
+  return cv;
+}
+
+function pushUndo(cell) {
+  if (!cell.ctx) return;
+  cell.undoStack = cell.undoStack || [];
+  const snap = takeUndoCanvas();
+  const sctx = snap.getContext("2d");
+  sctx.clearRect(0, 0, CELL, CELL);
+  sctx.drawImage(cell.canvas, 0, 0);
+  cell.undoStack.push(snap);
+  while (cell.undoStack.length > UNDO_MAX) undoPool.push(cell.undoStack.shift());
+}
+
+function restoreUndo(cell) {
+  const snap = cell.undoStack.pop();
+  if (!snap) return;
+  cell.ctx.setTransform(1, 0, 0, 1, 0, 0);
+  cell.ctx.clearRect(0, 0, CELL, CELL);
+  cell.ctx.drawImage(snap, 0, 0);
+  undoPool.push(snap);
+}
+
+/* ==== 作画过程录制 ====
+   记录笔迹而不是录屏：坐标 ×8 存 Int16（0.125px 精度），时间存相邻点的毫秒差。
+   一个点 6 字节，一张画下来通常十几 KB，比成品 PNG 还小。
+   成品图仍以 PNG 为准，这份数据只用于待机态重放。 */
+const REC_GAP_CAP = 1200; // 笔与笔之间的停顿上限
+const REC_DT_CAP = 400;   // 单点之间的间隔上限
+const REC_MIN_STEP = 1.2; // 抽稀：移动不足这么多像素就不记
+
+function recInit(cell) {
+  if (!cell.rec) {
+    cell.rec = { strokes: [], points: 0, lastT: performance.now(), active: {} };
+  }
+  return cell.rec;
+}
+
+function recStrokeStart(cell, pointerId, p, color, width) {
+  const r = recInit(cell);
+  if (r.points >= REC_MAX_POINTS) return;
+  const now = performance.now();
+  const stroke = {
+    c: color,
+    w: width,
+    gap: r.strokes.length ? Math.min(REC_GAP_CAP, Math.max(0, Math.round(now - r.lastT))) : 0,
+    pts: [Math.round(p.x * 8), Math.round(p.y * 8), 0]
+  };
+  r.strokes.push(stroke);
+  r.active[pointerId] = { stroke, lastT: now };
+  r.points++;
+  r.lastT = now;
+}
+
+function recStrokePoint(cell, pointerId, p) {
+  const r = cell.rec;
+  if (!r || r.points >= REC_MAX_POINTS) return;
+  const a = r.active[pointerId];
+  if (!a) return;
+  const pts = a.stroke.pts;
+  const px = pts[pts.length - 3] / 8, py = pts[pts.length - 2] / 8;
+  if (Math.hypot(p.x - px, p.y - py) < REC_MIN_STEP) return;
+  const now = performance.now();
+  pts.push(
+    Math.round(p.x * 8),
+    Math.round(p.y * 8),
+    Math.min(REC_DT_CAP, Math.max(0, Math.round(now - a.lastT)))
+  );
+  a.lastT = now;
+  r.points++;
+  r.lastT = now;
+}
+
+function recStrokeEnd(cell, pointerId) {
+  const r = cell.rec;
+  if (!r) return;
+  delete r.active[pointerId];
+  r.lastT = performance.now();
+}
+
+/** 撤销一笔时，录制里也退一笔，保证重放和成品一致 */
+function recUndo(cell) {
+  const r = cell.rec;
+  if (!r || !r.strokes.length) return;
+  const s = r.strokes.pop();
+  r.points -= s.pts.length / 3;
+}
+
+/* 签名板的笔迹单独录一份，重放时能演出「最后签个名」 */
+let sigRec = null;
+function sigRecReset() {
+  sigRec = { strokes: [], lastT: performance.now(), active: null };
+}
+function sigRecStart(p) {
+  if (!sigRec) sigRecReset();
+  const now = performance.now();
+  const stroke = {
+    gap: sigRec.strokes.length ? Math.min(REC_GAP_CAP, Math.max(0, Math.round(now - sigRec.lastT))) : 0,
+    pts: [Math.round(p.x), Math.round(p.y), 0]
+  };
+  sigRec.strokes.push(stroke);
+  sigRec.active = { stroke, lastT: now };
+  sigRec.lastT = now;
+}
+function sigRecPoint(p) {
+  if (!sigRec || !sigRec.active) return;
+  const pts = sigRec.active.stroke.pts;
+  const px = pts[pts.length - 3], py = pts[pts.length - 2];
+  if (Math.hypot(p.x - px, p.y - py) < 2) return;
+  const now = performance.now();
+  pts.push(
+    Math.round(p.x),
+    Math.round(p.y),
+    Math.min(REC_DT_CAP, Math.max(0, Math.round(now - sigRec.active.lastT)))
+  );
+  sigRec.active.lastT = now;
+  sigRec.lastT = now;
+}
+function sigRecEnd() {
+  if (!sigRec) return;
+  sigRec.active = null;
+  sigRec.lastT = performance.now();
+}
+
+function packStrokes(strokes) {
+  return strokes
+    .filter(s => s.pts.length >= 3)
+    .map(s => ({ c: s.c, w: s.w, gap: s.gap, p: Int16Array.from(s.pts) }));
+}
+
+const pointers = {};
+function isLockedPizza(cell) {
+  return !!(cell?.pizza && cell.pizza.signed && !reviewMode);
+}
+function bindDraw(cell) {
+  const cv = cell.canvas;
+  cv.addEventListener("pointerdown", e => {
+    if (isLockedPizza(cell)) return;
+    e.stopPropagation();
+    e.preventDefault();
+    cv.setPointerCapture(e.pointerId);
+    cell._rect = cv.getBoundingClientRect();
+    pushUndo(cell);
+    const p = pos(cv, e, cell._rect);
+    pointers[e.pointerId] = { cell, last: p, ctrl: p };
+    recStrokeStart(cell, e.pointerId, p, brushInk(), brushWidth());
+    brushDot(cell, p);
+    if (cell.pizza) cell.pizza.drawn = true;
+    activeCell = cell;
+    setDrawing(true);
+  });
+  cv.addEventListener("pointermove", e => {
+    if (isLockedPizza(cell)) return;
+    const pt = pointers[e.pointerId];
+    if (!pt || pt.cell !== cell) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const events = (typeof e.getCoalescedEvents === "function" && e.getCoalescedEvents().length)
+      ? e.getCoalescedEvents() : [e];
+    for (const ev of events) {
+      const p = pos(cv, ev, cell._rect);
+      brushSmooth(cell, pt.last, pt.ctrl, p);
+      recStrokePoint(cell, e.pointerId, p);
+      pt.last = pt.ctrl;
+      pt.ctrl = p;
+    }
+  });
+  const up = e => {
+    if (isLockedPizza(cell)) { delete pointers[e.pointerId]; return; }
+    const pt = pointers[e.pointerId];
+    if (pt) brushLine(cell, pt.last, pt.ctrl);
+    recStrokeEnd(cell, e.pointerId);
+    delete pointers[e.pointerId];
+    markArtChanged(cell.pizza);
+    if (cell.pizza?.drawn) scheduleSave(900);
+  };
+  cv.addEventListener("pointerup", up);
+  cv.addEventListener("pointercancel", up);
+}
+
+function pos(cv, e, rect) {
+  const r = rect || cv.getBoundingClientRect();
+  return { x: (e.clientX - r.left) / r.width * CELL, y: (e.clientY - r.top) / r.height * CELL };
+}
+
+const brushInk = () => (erasing ? "#FFD23F" : curColor);
+const brushWidth = () => (erasing ? brushSize * 2.2 : brushSize);
+
+function withBrushClip(cell, fn) {
+  const ctx = cell.ctx;
+  ctx.save();
+  clipToCrust(ctx, cell.crustSeed);
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  ctx.strokeStyle = brushInk();
+  ctx.fillStyle = brushInk();
+  ctx.lineWidth = brushWidth();
+  fn(ctx);
+  ctx.restore();
+}
+
+function brushDot(cell, p) {
+  withBrushClip(cell, ctx => {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, ctx.lineWidth / 2, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+function brushLine(cell, a, b) {
+  withBrushClip(cell, ctx => {
+    const dist = Math.hypot(b.x - a.x, b.y - a.y);
+    const step = Math.max(1.5, brushSize * 0.28);
+    if (dist > step * 1.6) {
+      const n = Math.ceil(dist / step);
+      for (let i = 1; i <= n; i++) {
+        const t = i / n;
+        ctx.beginPath();
+        ctx.arc(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, ctx.lineWidth / 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      return;
+    }
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  });
+}
+
+function brushSmooth(cell, prev, ctrl, next) {
+  const gap = Math.hypot(next.x - prev.x, next.y - prev.y);
+  if (gap > brushSize * 3.5) {
+    brushLine(cell, prev, ctrl);
+    brushLine(cell, ctrl, next);
+    return;
+  }
+  withBrushClip(cell, ctx => {
+    const m1 = { x: (prev.x + ctrl.x) / 2, y: (prev.y + ctrl.y) / 2 };
+    const m2 = { x: (ctrl.x + next.x) / 2, y: (ctrl.y + next.y) / 2 };
+    ctx.beginPath();
+    ctx.moveTo(m1.x, m1.y);
+    ctx.quadraticCurveTo(ctrl.x, ctrl.y, m2.x, m2.y);
+    ctx.stroke();
+  });
+}
+
+let activeCell = null;
+
+function setDrawing(on) {
+  document.querySelector(".app").classList.toggle("drawing", !!on);
+}
+
+function ensurePizza(cell) {
+  if (cell.pizza) return cell.pizza;
+  const idx = cells.indexOf(cell);
+  const p = {
+    id: uid++,
+    name: "",
+    likes: 0,
+    cellIndex: idx,
+    cell,
+    gridR: cell.g.r,
+    gridC: cell.g.c,
+    created: Date.now(),
+    drawn: false
+  };
+  cell.pizza = p; cell.filled = true; cell.el.classList.add("filled");
+  cell.el.querySelector(".empty-label")?.remove();
+  cell.el.querySelector("canvas.empty-ring")?.remove();
+  cell.emptyRing = null;
+  pizzas.push(p);
+  ensureEmptySeats();
+  scheduleSave();
+  return p;
+}
+
+let panX = 0, panY = 0, scale = 1;
+function applyTransform() {
+  world.style.transform = `translate(${panX}px,${panY}px) scale(${scale})`;
+  cullCells();
+}
+
+let cullRaf = 0;
+function cullCells() {
+  if (cullRaf) return;
+  cullRaf = requestAnimationFrame(() => {
+    cullRaf = 0;
+    const vw = viewport.clientWidth, vh = viewport.clientHeight;
+    const margin = SLOT * scale;
+    for (const cell of cells) {
+      const sx = cell.g.x * scale + panX;
+      const sy = cell.g.y * scale + panY;
+      const se = CELL * scale;
+      const visible = sx + se > -margin && sx < vw + margin &&
+                      sy + se > -margin && sy < vh + margin;
+      if (visible && cell._culled) {
+        cell.el.style.display = "";
+        cell._culled = false;
+      } else if (!visible && !cell._culled) {
+        cell.el.style.display = "none";
+        cell._culled = true;
+      }
+    }
+  });
+}
+
+let dragging = false, dragStart = null, panMoved = false, panDown = null;
+viewport.addEventListener("pointerdown", e => {
+  if (e.target.closest(".cell canvas")) return;
+  dragging = true;
+  panMoved = false;
+  panDown = { x: e.clientX, y: e.clientY };
+  viewport.classList.add("grabbing");
+  dragStart = { x: e.clientX - panX, y: e.clientY - panY };
+});
+window.addEventListener("pointermove", e => {
+  if (!dragging) return;
+  if (!panMoved && panDown) {
+    panMoved = Math.hypot(e.clientX - panDown.x, e.clientY - panDown.y) > 10;
+  }
+  panX = e.clientX - dragStart.x;
+  panY = e.clientY - dragStart.y;
+  clampPan();
+  applyTransform();
+});
+window.addEventListener("pointerup", () => {
+  dragging = false;
+  panDown = null;
+  viewport.classList.remove("grabbing");
+});
+
+function clampPan() {
+  const vw = viewport.clientWidth, vh = viewport.clientHeight;
+  const maxX = vw * 0.5 - worldMinX * scale;
+  const minX = vw * 0.5 - worldMaxX * scale;
+  const maxY = vh * 0.5 - worldMinY * scale;
+  const minY = vh * 0.5 - worldMaxY * scale;
+  panX = Math.min(maxX, Math.max(minX, panX));
+  panY = Math.min(maxY, Math.max(minY, panY));
+}
+
+function centerOn(g, animate = true) {
+  const vw = viewport.clientWidth, vh = viewport.clientHeight;
+  const tx = vw / 2 - (g.x + CELL / 2) * scale;
+  const ty = vh / 2 - (g.y + CELL / 2) * scale;
+  if (animate) {
+    world.style.transition = "transform .6s cubic-bezier(.4,1,.4,1)";
+    setTimeout(() => { world.style.transition = ""; }, 650);
+  }
+  panX = tx; panY = ty;
+  clampPan();
+  applyTransform();
+}
+
+function focusCell(cell, ms = 2600) {
+  cells.forEach(c => c.el.classList.remove("focus"));
+  if (!cell) return;
+  cell.el.classList.add("focus");
+  clearTimeout(focusCell._t);
+  focusCell._t = setTimeout(() => cell.el.classList.remove("focus"), ms);
+}
+
+function draftCell() {
+  if (activeCell && activeCell.pizza && !activeCell.pizza.signed && !activeCell.pizza.removed) {
+    return activeCell;
+  }
+  let best = null;
+  for (const p of pizzas) {
+    if (p.removed || p.signed) continue;
+    const cell = cells[p.cellIndex];
+    if (!cell || !cell.filled || cell.pizza !== p) continue;
+    if (!best || p.created > best.pizza.created) best = cell;
+  }
+  return best;
+}
+
+function goToPlate(cell, msg) {
+  if (!cell) return;
+  activeCell = cell;
+  centerOn(cell.g);
+  focusCell(cell, 3200);
+  cell.el.classList.add("target");
+  setTimeout(() => cell.el.classList.remove("target"), 2600);
+  toast(msg);
+}
+
+document.getElementById("findseat").onclick = () => {
+  const draft = draftCell();
+  if (draft) {
+    goToPlate(draft, "Finish this pizza first — then tap Save");
+    return;
+  }
+  const target = nearestEmpty();
+  if (!target) { toast("Couldn't find a plate — try again"); return; }
+  if (!target.canvas) makeCanvas(target);
+  ensurePizza(target);
+  setDrawing(true);
+  goToPlate(target, "Your plate is ready — start drawing!");
+};
+
+const sw = document.getElementById("swatches");
+const wheelRing = document.getElementById("wheelRing");
+const wheelCenter = document.getElementById("wheelCenter");
+
+function setColor(c, fromSwatch) {
+  curColor = c;
+  erasing = false;
+  document.getElementById("eraser").classList.remove("on");
+  wheelCenter.style.background = c;
+  [...sw.children].forEach(x => x.classList.toggle("on", !!fromSwatch && x.dataset.color === c));
+}
+
+COLORS.forEach((c, i) => {
+  const b = document.createElement("div");
+  b.className = "sw" + (i === 0 ? " on" : "");
+  b.style.background = c;
+  b.dataset.color = c;
+  // 默认色占约 2/3 圆弧：集中在色盘右侧，左侧留空（不是整圈）
+  const n = COLORS.length;
+  const span = Math.PI * 2 * (2 / 3);   // 240°
+  const start = -span / 2;              // 以右侧为中心对称铺开
+  const ang = start + (i / Math.max(1, n - 1)) * span;
+  const orbit = 56;
+  const cx = 48, cy = 64; // 与色盘中心对齐（色盘偏左，弧在右侧）
+  b.style.left = (cx + Math.cos(ang) * orbit) + "px";
+  b.style.top = (cy + Math.sin(ang) * orbit) + "px";
+  b.onclick = () => setColor(c, true);
+  sw.appendChild(b);
+});
+
+function colorFromWheelEvent(e) {
+  const r = wheelRing.getBoundingClientRect();
+  const cx = r.left + r.width / 2;
+  const cy = r.top + r.height / 2;
+  const dx = e.clientX - cx;
+  const dy = e.clientY - cy;
+  const dist = Math.hypot(dx, dy);
+  const max = r.width / 2;
+  // 只响应环带，避免点到中心空区误触
+  if (dist < max * 0.42 || dist > max * 1.05) return null;
+  let ang = Math.atan2(dy, dx) * 180 / Math.PI; // -180..180, 0=east
+  ang = (ang + 360 + 90) % 360; // 0=top, clockwise with conic
+  const h = ang;
+  const s = 78 + Math.min(12, (dist / max) * 12);
+  const l = 52;
+  return hslToHex(h, s, l);
+}
+
+function hslToHex(h, s, l) {
+  s /= 100; l /= 100;
+  const a = s * Math.min(l, 1 - l);
+  const f = n => {
+    const k = (n + h / 30) % 12;
+    const c = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+    return Math.round(255 * c).toString(16).padStart(2, "0");
+  };
+  return `#${f(0)}${f(8)}${f(4)}`.toUpperCase();
+}
+
+let wheelDrawing = false;
+function pickWheel(e) {
+  const c = colorFromWheelEvent(e);
+  if (!c) return;
+  setColor(c, false);
+}
+wheelRing.addEventListener("pointerdown", e => {
+  e.preventDefault();
+  wheelDrawing = true;
+  try { wheelRing.setPointerCapture(e.pointerId); } catch (_) {}
+  pickWheel(e);
+});
+wheelRing.addEventListener("pointermove", e => {
+  if (!wheelDrawing) return;
+  pickWheel(e);
+});
+const endWheel = () => { wheelDrawing = false; };
+wheelRing.addEventListener("pointerup", endWheel);
+wheelRing.addEventListener("pointercancel", endWheel);
+wheelCenter.style.background = curColor;
+
+document.getElementById("brush").oninput = e => { brushSize = +e.target.value; };
+document.getElementById("eraser").onclick = e => {
+  erasing = !erasing;
+  e.target.classList.toggle("on", erasing);
+};
+document.getElementById("undo").onclick = () => {
+  const cell = activeCell;
+  if (!cell || !cell.undoStack || !cell.undoStack.length) {
+    toast("Nothing to undo yet");
+    return;
+  }
+  restoreUndo(cell);
+  markArtChanged(cell.pizza);
+  recUndo(cell);
+};
+
+const overlay = document.getElementById("overlay");
+const sigPad = document.getElementById("sigPad");
+/* 这里不能开 desynchronized：低延迟画布会被提升成独立的硬件叠加层，
+   透明像素不跟页面混合，签名板会整块变黑（或显示残留画面）。
+   披萨格子那块开着没事——它在 #world 里始终带 CSS transform，不会被提升。
+   签名板只有 640×220，少这点延迟无所谓。 */
+const sigCtx = sigPad.getContext("2d");
+
+let sigDrawing = false, sigLast = null, sigDirty = false;
+
+/* 签名图层像素比必须等于 CSS 盒子比（46% x 20% of CELL），否则手写会被拉变形 */
+const SIG_LAYER_W = 230, SIG_LAYER_H = 100;
+
+function ensureSigLayer(cell) {
+  let cv = cell.el.querySelector("canvas.sig-mark");
+  if (!cv) {
+    cv = document.createElement("canvas");
+    cv.className = "sig-mark";
+    cv.width = SIG_LAYER_W;
+    cv.height = SIG_LAYER_H;
+    cell.el.appendChild(cv);
+  }
+  cell.sigCanvas = cv;
+  return cv;
+}
+
+function clearSigPad() {
+  sigCtx.setTransform(1, 0, 0, 1, 0, 0);
+  sigCtx.clearRect(0, 0, sigPad.width, sigPad.height);
+  sigDirty = false;
+  sigLast = null;
+  sigRecReset();
+}
+function sigPos(e) {
+  const r = sigPad.getBoundingClientRect();
+  return {
+    x: (e.clientX - r.left) / r.width * sigPad.width,
+    y: (e.clientY - r.top) / r.height * sigPad.height,
+  };
+}
+function strokeSig(a, b) {
+  sigCtx.lineCap = "round";
+  sigCtx.lineJoin = "round";
+  sigCtx.strokeStyle = "#1A1A1F";
+  sigCtx.lineWidth = 5.5;
+  const dist = Math.hypot(b.x - a.x, b.y - a.y);
+  if (dist > 10) {
+    const n = Math.ceil(dist / 4);
+    for (let i = 1; i <= n; i++) {
+      const t = i / n;
+      const x = a.x + (b.x - a.x) * t;
+      const y = a.y + (b.y - a.y) * t;
+      sigCtx.beginPath();
+      sigCtx.arc(x, y, 2.6, 0, Math.PI * 2);
+      sigCtx.fillStyle = "#1A1A1F";
+      sigCtx.fill();
+    }
+    return;
+  }
+  sigCtx.beginPath();
+  sigCtx.moveTo(a.x, a.y);
+  sigCtx.lineTo(b.x, b.y);
+  sigCtx.stroke();
+}
+sigPad.addEventListener("pointerdown", e => {
+  e.preventDefault();
+  sigDrawing = true;
+  sigDirty = true;
+  sigLast = sigPos(e);
+  try { sigPad.setPointerCapture(e.pointerId); } catch (_) {}
+  sigRecStart(sigLast);
+  strokeSig(sigLast, sigLast);
+});
+sigPad.addEventListener("pointermove", e => {
+  if (!sigDrawing) return;
+  e.preventDefault();
+  const p = sigPos(e);
+  strokeSig(sigLast, p);
+  sigRecPoint(p);
+  sigLast = p;
+});
+const endSig = () => { sigDrawing = false; sigLast = null; sigRecEnd(); };
+sigPad.addEventListener("pointerup", endSig);
+sigPad.addEventListener("pointercancel", endSig);
+document.getElementById("clearSig").onclick = clearSigPad;
+
+/** 取签名板上实际墨迹的包围盒，空白则返回 null */
+function inkBounds(cv) {
+  const ctx = cv.getContext("2d");
+  const { data, width, height } = ctx.getImageData(0, 0, cv.width, cv.height);
+  let x0 = width, y0 = height, x1 = -1, y1 = -1;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (data[(y * width + x) * 4 + 3] > 12) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+  }
+  if (x1 < 0) return null;
+  return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+}
+
+/** 签名画到披萨外侧右下角图层：裁掉空白后等比放大，保证不变形也不发虚 */
+function bakeSignature(cell, fromPad) {
+  const cv = ensureSigLayer(cell);
+  const ctx = cv.getContext("2d");
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  markArtChanged(cell.pizza, "sig");
+  if (!fromPad) return;
+  const b = inkBounds(sigPad);
+  if (!b) return;
+  const pad = 6;
+  const s = Math.min((cv.width - pad * 2) / b.w, (cv.height - pad * 2) / b.h);
+  const w = b.w * s, h = b.h * s;
+  ctx.drawImage(sigPad, b.x, b.y, b.w, b.h, (cv.width - w) / 2, (cv.height - h) / 2, w, h);
+}
+
+/** 演示用：生成一笔手写感签名（写在外侧图层） */
+function drawSeedSignature(cell, seed) {
+  const cv = ensureSigLayer(cell);
+  const ctx = cv.getContext("2d");
+  const rng = mulberry32(seed + 99);
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  const y0 = cv.height * 0.55;
+  ctx.save();
+  ctx.strokeStyle = "#1A1A1F";
+  ctx.fillStyle = "#1A1A1F";
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 4.2;
+  ctx.globalAlpha = 0.85;
+  ctx.beginPath();
+  let x = 12, y = y0;
+  ctx.moveTo(x, y);
+  const strokes = 3 + Math.floor(rng() * 2);
+  for (let s = 0; s < strokes; s++) {
+    const len = 26 + rng() * 34;
+    const amp = 6 + rng() * 10;
+    const waves = 2 + Math.floor(rng() * 3);
+    for (let i = 1; i <= 12; i++) {
+      const t = i / 12;
+      const px = x + len * t;
+      const py = y + Math.sin(t * Math.PI * waves) * amp * (1 - t * 0.2)
+        + (rng() - 0.5) * 1.4;
+      ctx.lineTo(px, py);
+    }
+    x += len * 0.66 + 5;
+    y += (rng() - 0.5) * 8;
+  }
+  ctx.quadraticCurveTo(x + 10, y - 14, x + 20, y + 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+document.getElementById("save").onclick = () => {
+  const cell = activeCell || cells.find(c => c.filled && c.pizza && !c.pizza.signed);
+  if (!cell || !cell.pizza) { toast("Draw something first"); return; }
+  window._savingCell = cell;
+  const pv = document.getElementById("preview");
+  const pctx = pv.getContext("2d");
+  pctx.clearRect(0, 0, 240, 240);
+  pctx.drawImage(cell.canvas, 0, 0, 200, 200);
+  // 预览：签名区在披萨外侧右下
+  pctx.strokeStyle = "rgba(255,255,255,0.55)";
+  pctx.setLineDash([4, 3]);
+  pctx.strokeRect(168, 168, 64, 36);
+  pctx.setLineDash([]);
+  pctx.fillStyle = "rgba(255,255,255,0.5)";
+  pctx.font = "600 11px Inter, sans-serif";
+  pctx.fillText("your name", 172, 190);
+  clearSigPad();
+  overlay.classList.add("show");
+};
+document.getElementById("cancelSave").onclick = () => overlay.classList.remove("show");
+function commitSave(wantPrint) {
+  const cell = window._savingCell;
+  if (!cell || !cell.pizza) return;
+  if (!sigDirty) {
+    toast("Please sign your name above");
+    return;
+  }
+  bakeSignature(cell, true);
+  cell.pizza.signed = true;
+  cell.pizza.drawn = true;
+  cell.pizza.name = cell.pizza.name || "signed";
+  // 趁签名板还没清空，先把打印内容抓下来
+  const printPayload = wantPrint && canPrint() ? buildPrintPayload(cell) : null;
+  if (cell.canvas) cell.canvas.style.pointerEvents = "none";
+  renderLikePill(cell);
+  overlay.classList.remove("show");
+  if (activeCell === cell) { activeCell = null; setDrawing(false); }
+  toast(printPayload ? "Saved! Printing your card…" : "Saved! Your pizza is on the wall");
+  renderRank();
+  saveRecording(cell.pizza, cell).catch(err => console.warn("recording save failed", err));
+  scheduleSaveNow();
+  sendToPrint(printPayload);
+}
+
+document.getElementById("confirmSave").onclick = () => commitSave(true);
+document.getElementById("saveOnly").onclick = () => commitSave(false);
+
+/* ==== 打印 ====
+   墙上的画布只有 240×240，直接送打印在 A4 上约等于 40 DPI，边缘会糊。
+   但笔迹是按矢量录下来的（橡皮擦也只是用芝士色覆盖画，不是 destination-out），
+   所以这里把同一套笔画按打印分辨率重画一遍，得到真正清晰的输出。 */
+const PRINT_ART_PX = 1200;
+
+function replayStrokeForPrint(ctx, seed, st) {
+  const pts = st.pts || st.p;
+  if (!pts || pts.length < 3) return;
+  ctx.save();
+  clipToCrust(ctx, seed);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = st.c;
+  ctx.fillStyle = st.c;
+  ctx.lineWidth = st.w;
+
+  const n = pts.length / 3;
+  const at = i => ({ x: pts[i * 3] / 8, y: pts[i * 3 + 1] / 8 });
+
+  if (n === 1) {
+    const a = at(0);
+    ctx.beginPath();
+    ctx.arc(a.x, a.y, st.w / 2, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    // 和作画时同一套「中点二次贝塞尔」，印出来的线形跟屏幕上一致
+    const first = at(0);
+    let ctrl = at(1);
+    ctx.beginPath();
+    ctx.moveTo(first.x, first.y);
+    ctx.lineTo((first.x + ctrl.x) / 2, (first.y + ctrl.y) / 2);
+    for (let i = 2; i < n; i++) {
+      const next = at(i);
+      ctx.quadraticCurveTo(ctrl.x, ctrl.y, (ctrl.x + next.x) / 2, (ctrl.y + next.y) / 2);
+      ctrl = next;
+    }
+    ctx.lineTo(ctrl.x, ctrl.y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function renderPrintArt(cell, size = PRINT_ART_PX, strokesIn, seedIn) {
+  const cv = document.createElement("canvas");
+  cv.width = size;
+  cv.height = size;
+  const ctx = cv.getContext("2d");
+
+  const strokes = strokesIn || cell.rec?.strokes || [];
+  if (!strokes.length) {
+    // 没有笔迹记录（旧数据，或笔画太少没入库）：只能把位图放大
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    if (cell.canvas) ctx.drawImage(cell.canvas, 0, 0, size, size);
+    return cv;
+  }
+
+  const seed = seedIn ?? cell.crustSeed;
+  ctx.scale(size / CELL, size / CELL);
+  drawCrust(ctx, seed, true);
+  for (const st of strokes) replayStrokeForPrint(ctx, seed, st);
+  return cv;
+}
+
+/** 签名也按矢量重画，补打才不会比首次打印糊一档（烘焙图层只有 230×100） */
+function renderSigStrokesDataUrl(sig, targetW = 1200) {
+  const strokes = (sig?.strokes || []).filter(s => (s.p || s.pts)?.length >= 3);
+  if (!strokes.length) return null;
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const s of strokes) {
+    const p = s.p || s.pts;
+    for (let i = 0; i < p.length; i += 3) {
+      minX = Math.min(minX, p[i]); maxX = Math.max(maxX, p[i]);
+      minY = Math.min(minY, p[i + 1]); maxY = Math.max(maxY, p[i + 1]);
+    }
+  }
+  const pad = 10;
+  minX -= pad; minY -= pad; maxX += pad; maxY += pad;
+  const bw = Math.max(1, maxX - minX), bh = Math.max(1, maxY - minY);
+  const k = targetW / bw;
+
+  const cv = document.createElement("canvas");
+  cv.width = Math.round(bw * k);
+  cv.height = Math.round(bh * k);
+  const ctx = cv.getContext("2d");
+  ctx.scale(k, k);
+  ctx.translate(-minX, -minY);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "#1A1A1F";
+  ctx.lineWidth = 5.5; // 和 strokeSig 一致
+
+  for (const s of strokes) {
+    const p = s.p || s.pts;
+    const n = p.length / 3;
+    const at = i => ({ x: p[i * 3], y: p[i * 3 + 1] });
+    const first = at(0);
+    let ctrl = at(1);
+    ctx.beginPath();
+    ctx.moveTo(first.x, first.y);
+    ctx.lineTo((first.x + ctrl.x) / 2, (first.y + ctrl.y) / 2);
+    for (let i = 2; i < n; i++) {
+      const next = at(i);
+      ctx.quadraticCurveTo(ctrl.x, ctrl.y, (ctrl.x + next.x) / 2, (ctrl.y + next.y) / 2);
+      ctrl = next;
+    }
+    ctx.lineTo(ctrl.x, ctrl.y);
+    ctx.stroke();
+  }
+  return cv.toDataURL("image/png");
+}
+
+/** 兜底：连签名笔迹都没有时，用已烘焙到披萨旁边的图层放大 */
+function bakedSignatureDataUrl(cell) {
+  const cv = cell.sigCanvas;
+  if (!cv) return null;
+  const b = inkBounds(cv);
+  if (!b) return null;
+  const pad = 4, scale = 4;
+  const sx = Math.max(0, b.x - pad);
+  const sy = Math.max(0, b.y - pad);
+  const sw = Math.min(cv.width - sx, b.w + pad * 2);
+  const sh = Math.min(cv.height - sy, b.h + pad * 2);
+  const out = document.createElement("canvas");
+  out.width = Math.round(sw * scale);
+  out.height = Math.round(sh * scale);
+  const ctx = out.getContext("2d");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(cv, sx, sy, sw, sh, 0, 0, out.width, out.height);
+  return out.toDataURL("image/png");
+}
+
+/** 签名单独出图：裁掉空白再放大，避免整块签名板留一圈空 */
+function renderPrintSignature(scale = 2) {
+  const b = inkBounds(sigPad);
+  if (!b) return null;
+  const pad = 8;
+  const sx = Math.max(0, b.x - pad);
+  const sy = Math.max(0, b.y - pad);
+  const sw = Math.min(sigPad.width - sx, b.w + pad * 2);
+  const sh = Math.min(sigPad.height - sy, b.h + pad * 2);
+  const cv = document.createElement("canvas");
+  cv.width = Math.round(sw * scale);
+  cv.height = Math.round(sh * scale);
+  const ctx = cv.getContext("2d");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(sigPad, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
+  return cv.toDataURL("image/png");
+}
+
+const printApi = () =>
+  window.pizzaApp && typeof window.pizzaApp.printPizza === "function" ? window.pizzaApp : null;
+
+/* 渲染侧缓存一份打印配置，保存弹窗要靠它决定显示几个按钮 */
+let printCfg = { enabled: false, autoPrint: false };
+const canPrint = () => !!(printApi() && printCfg.enabled);
+
+async function refreshPrintCfg() {
+  const api = printApi();
+  if (!api) {
+    printCfg = { enabled: false, autoPrint: false };
+  } else {
+    try {
+      printCfg = await api.getPrintConfig();
+    } catch (err) {
+      console.warn("print config unavailable", err);
+      printCfg = { enabled: false, autoPrint: false };
+    }
+  }
+  syncSaveButtons();
+  return printCfg;
+}
+
+/** 自动打印开着就一个按钮；关了就让顾客自己选打不打 */
+function syncSaveButtons() {
+  const only = document.getElementById("saveOnly");
+  const ok = document.getElementById("confirmSave");
+  if (!only || !ok) return;
+  const manual = canPrint() && !printCfg.autoPrint;
+  only.style.display = manual ? "" : "none";
+  ok.textContent = canPrint() ? "Save & print" : "Save";
+  ok.closest(".mrow")?.classList.toggle("three", manual);
+}
+
+/** 补打已上墙的披萨：内存里没有笔迹就回数据库取，再没有就退回位图 */
+async function buildReprintPayload(cell) {
+  if (!cell?.pizza) return null;
+  let strokes = cell.rec?.strokes;
+  let seed = cell.crustSeed;
+  let sig = null;
+  const rec = await getRecording(cell.pizza.id);
+  if (!strokes?.length && rec?.strokes?.length) {
+    strokes = rec.strokes;
+    seed = rec.crustSeed ?? seed;
+  }
+  if (rec?.sig) sig = renderSigStrokesDataUrl(rec.sig);
+  return {
+    art: renderPrintArt(cell, PRINT_ART_PX, strokes, seed).toDataURL("image/png"),
+    sig: sig || bakedSignatureDataUrl(cell),
+    id: cell.pizza.id,
+    created: cell.pizza.created,
+    title: "If I were a pizza chef",
+  };
+}
+
+async function reprintPizza(cell) {
+  if (!canPrint()) { toast("Printing is off — turn it on in Review mode"); return; }
+  toast("Sending to printer…");
+  try {
+    sendToPrint(await buildReprintPayload(cell));
+  } catch (err) {
+    console.warn("reprint failed", err);
+    toast("Could not build the print card");
+  }
+}
+
+/* 店员侧的打印设置：选一次打印机就存进 exe 同级的 print-config.json */
+async function initPrintSetup() {
+  const api = printApi();
+  const wrap = document.getElementById("printSetup");
+  const pick = document.getElementById("printerPick");
+  const onoff = document.getElementById("printEnabled");
+  const autoBox = document.getElementById("printAuto");
+  const hint = document.getElementById("printHint");
+  const test = document.getElementById("printTest");
+  if (!api) {
+    wrap.innerHTML = '<div style="opacity:.75">Printing is only available in the desktop app.</div>';
+    return;
+  }
+  const paint = () => {
+    onoff.checked = !!printCfg.enabled;
+    autoBox.checked = !!printCfg.autoPrint;
+    autoBox.disabled = !printCfg.enabled;
+    hint.textContent = !printCfg.enabled
+      ? "Printing is off. Nothing will print at all."
+      : printCfg.autoPrint
+        ? "A card prints automatically when a guest signs."
+        : "Guests choose “Save & print” themselves. Staff can reprint any pizza with the printer button on it.";
+    syncSaveButtons();
+    cells.forEach(c => { if (c.filled && c.pizza) renderLikePill(c); });
+  };
+  try {
+    const [cfg, printers] = await Promise.all([api.getPrintConfig(), api.listPrinters()]);
+    printCfg = cfg;
+    pick.innerHTML = "";
+    const dflt = document.createElement("option");
+    dflt.value = "";
+    dflt.textContent = "System default";
+    pick.appendChild(dflt);
+    for (const p of printers) {
+      const o = document.createElement("option");
+      o.value = p.name;
+      o.textContent = (p.displayName || p.name) + (p.isDefault ? " (default)" : "");
+      pick.appendChild(o);
+    }
+    pick.value = cfg.printer || "";
+    paint();
+
+    pick.onchange = () => api.setPrintConfig({ printer: pick.value });
+    onoff.onchange = async () => {
+      printCfg = await api.setPrintConfig({ enabled: onoff.checked });
+      paint();
+      toast(onoff.checked ? "Printing on" : "Printing off");
+    };
+    autoBox.onchange = async () => {
+      printCfg = await api.setPrintConfig({ autoPrint: autoBox.checked });
+      paint();
+      toast(autoBox.checked ? "Auto-print on" : "Guests will choose to print");
+    };
+    test.onclick = () => {
+      const cell = cells.find(c => c.filled && c.pizza && !c.pizza.removed);
+      if (!cell) { toast("Draw a pizza first, then test"); return; }
+      reprintPizza(cell);
+    };
+  } catch (err) {
+    console.warn("print setup failed", err);
+    wrap.innerHTML = '<div style="opacity:.75">Could not reach the printer service.</div>';
+  }
+}
+
+/** 组装打印内容。必须同步跑完——签名板随后会被清空 */
+function buildPrintPayload(cell) {
+  if (!cell?.pizza) return null;
+  return {
+    art: renderPrintArt(cell).toDataURL("image/png"),
+    sig: renderPrintSignature(),
+    id: cell.pizza.id,
+    created: cell.pizza.created,
+    title: "If I were a pizza chef",
+  };
+}
+
+/** 送打印。刻意不 await：打印机慢或离线都不该卡住保存流程 */
+function sendToPrint(payload) {
+  const api = printApi();
+  if (!api || !payload) return;
+  api
+    .printPizza(payload)
+    .then(res => {
+      if (res && res.ok === false && res.reason !== "disabled") {
+        console.warn("print failed:", res.reason);
+        toast("Printer not ready — pizza is still on the wall");
+      }
+    })
+    .catch(err => console.warn("print error", err));
+}
+
+function renderNameBar(cell) {
+  cell.el.querySelector(".namebar")?.remove();
+  renderLikePill(cell);
+}
+function renderLikePill(cell) {
+  cell.el.querySelector(".likepill")?.remove();
+  cell.el.querySelector(".mod-remove")?.remove();
+  cell.el.querySelector(".mod-print")?.remove();
+  if (!cell.pizza || cell.pizza.removed) return;
+  const lp = document.createElement("div");
+  lp.className = "likepill";
+  lp.innerHTML = "❤ <span>" + cell.pizza.likes + "</span>";
+  bindChargeLike(lp, () => cell.pizza, (el) => {
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  });
+  cell.el.appendChild(lp);
+  const rm = document.createElement("button");
+  rm.type = "button";
+  rm.className = "mod-remove";
+  rm.title = "Take down";
+  rm.textContent = "✕";
+  rm.onclick = ev => {
+    ev.stopPropagation();
+    takeDownPizza(cell.pizza);
+  };
+  cell.el.appendChild(rm);
+
+  if (canPrint()) {
+    const pr = document.createElement("button");
+    pr.type = "button";
+    pr.className = "mod-print";
+    pr.title = "Print this pizza";
+    pr.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M6 9V3h12v6"/><rect x="6" y="14" width="12" height="7"/>' +
+      '<path d="M6 17H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/></svg>';
+    pr.onclick = ev => {
+      ev.stopPropagation();
+      reprintPizza(cell);
+    };
+    cell.el.appendChild(pr);
+  }
+}
+
+const CHARGE_MS = 800;
+
+function like(p, x, y) {
+  if (!p || p.removed) return;
+  p.likes++;
+  burstHearts(x, y);
+  const cell = cells[p.cellIndex];
+  const span = cell?.el.querySelector(".likepill span");
+  if (span) span.textContent = p.likes;
+  renderRank();
+  scheduleSave(400);
+}
+
+function burstHearts(x, y) {
+  const emojis = ["❤", "🧡", "💛", "💖", "❤️‍🔥"];
+  for (let i = 0; i < 8; i++) {
+    const h = document.createElement("div");
+    h.className = "like-burst";
+    h.textContent = emojis[i % emojis.length];
+    const ang = (i / 8) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
+    const dist = 50 + Math.random() * 60;
+    h.style.left = x + "px";
+    h.style.top = y + "px";
+    h.style.setProperty("--bx", Math.cos(ang) * dist + "px");
+    h.style.setProperty("--by", Math.sin(ang) * dist + "px");
+    h.style.animationDelay = (i * 0.03) + "s";
+    document.body.appendChild(h);
+    setTimeout(() => h.remove(), 900);
+  }
+}
+
+function bindChargeLike(el, getPizza, getXY) {
+  let timer = null;
+  let charged = false;
+
+  const start = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    charged = false;
+    el.classList.remove("popped");
+    el.classList.add("charging");
+    timer = setTimeout(() => {
+      charged = true;
+      el.classList.remove("charging");
+      el.classList.add("popped");
+      const p = getPizza();
+      const { x, y } = getXY(el);
+      if (p) like(p, x, y);
+      timer = null;
+    }, CHARGE_MS);
+  };
+
+  const cancel = (e) => {
+    e.stopPropagation();
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    if (!charged) {
+      el.classList.remove("charging");
+    }
+  };
+
+  el.addEventListener("pointerdown", start);
+  el.addEventListener("pointerup", cancel);
+  el.addEventListener("pointercancel", cancel);
+  el.addEventListener("pointerleave", cancel);
+  el.addEventListener("click", e => e.stopPropagation());
+}
+
+let curTab = "top";
+let reviewMode = false;
+
+const rankDock = document.getElementById("rankDock");
+const RANK_ROTATE_TABS = ["top", "new", "discover"];
+const RANK_ROTATE_MS = 9000;
+let rankRotateTimer = null;
+let rankRotatePaused = false; // 人手点过 Tab 后暂停一轮，避免抢操作
+
+function setRankTab(tab, { fromUser = false } = {}) {
+  if (!tab || tab === curTab) {
+    if (fromUser) pauseRankRotate();
+    return;
+  }
+  curTab = tab;
+  if (tab === "discover") resetDiscoverOrder();
+  document.querySelectorAll(".tabs button").forEach(x => {
+    x.classList.toggle("on", x.dataset.tab === tab);
+  });
+  renderRank();
+  if (fromUser) pauseRankRotate();
+  else scheduleRankRotate();
+}
+
+function pauseRankRotate() {
+  rankRotatePaused = true;
+  clearTimeout(rankRotateTimer);
+  rankRotateTimer = setTimeout(() => {
+    rankRotatePaused = false;
+    scheduleRankRotate();
+  }, RANK_ROTATE_MS * 2); // 人手操作后多停一轮再继续
+}
+
+function scheduleRankRotate() {
+  clearTimeout(rankRotateTimer);
+  if (rankRotatePaused || reviewMode || idleOn || curTab === "removed") return;
+  rankRotateTimer = setTimeout(() => {
+    if (rankRotatePaused || reviewMode || idleOn || curTab === "removed") return;
+    const i = RANK_ROTATE_TABS.indexOf(curTab);
+    const next = RANK_ROTATE_TABS[(i < 0 ? 0 : i + 1) % RANK_ROTATE_TABS.length];
+    setRankTab(next);
+  }, RANK_ROTATE_MS);
+}
+
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
+  setRankTab(b.dataset.tab, { fromUser: true });
+});
+
+function visiblePizzas() {
+  return pizzas.filter(p => !p.removed && (p.signed || p.drawn || p.name));
+}
+function removedPizzas() {
+  return pizzas.filter(p => p.removed);
+}
+
+function resetCellToEmpty(cell) {
+  if (!cell) return;
+  cell.el.querySelectorAll("canvas, .likepill, .sig-hint, .empty-label, .mod-remove, .mod-print, .namebar").forEach(n => n.remove());
+  cell.canvas = null;
+  cell.ctx = null;
+  cell.sigCanvas = null;
+  cell.emptyRing = null;
+  if (cell.undoStack?.length) undoPool.push(...cell.undoStack);
+  cell.undoStack = [];
+  cell.rec = null;
+  cell.pizza = null;
+  cell.filled = false;
+  cell.el.className = "cell";
+  cell.el.innerHTML = '<div class="empty-label">Free plate<br>tap <b>Start drawing</b></div>';
+  ensureEmptyRing(cell);
+}
+
+function takeDownPizza(p) {
+  if (!p || p.removed) return;
+  const cell = cells[p.cellIndex];
+  try {
+    if (cell?.canvas) p._snap = cell.canvas.toDataURL("image/png");
+    if (cell?.sigCanvas) p._sigSnap = cell.sigCanvas.toDataURL("image/png");
+    if (cell?.crustSeed != null) p.crustSeed = cell.crustSeed;
+  } catch (_) {}
+  p.removed = true;
+  p.removedAt = Date.now();
+  if (activeCell === cell) activeCell = null;
+  resetCellToEmpty(cell);
+  toast("Taken down · moved to Removed");
+  if (reviewMode) {
+    setRankTab("removed", { fromUser: true });
+  }
+  renderRank();
+  scheduleSaveNow();
+}
+
+function restorePizza(p) {
+  if (!p || !p.removed) return;
+  const target = nearestEmpty();
+  if (!target) {
+    toast("No free plate to restore onto");
+    return;
+  }
+  makeCanvas(target, p.crustSeed || (1000 + cells.indexOf(target) * 97));
+  const finish = () => {
+    p.removed = false;
+    delete p.removedAt;
+    p.cellIndex = cells.indexOf(target);
+    p.cell = target;
+    p.gridR = target.g.r;
+    p.gridC = target.g.c;
+    target.pizza = p;
+    target.filled = true;
+    target.el.classList.add("filled");
+    target.el.querySelector(".empty-label")?.remove();
+    if (target.canvas) target.canvas.style.pointerEvents = p.signed ? "none" : "auto";
+    if (p._sigSnap) {
+      const sc = ensureSigLayer(target);
+      const img2 = new Image();
+      img2.onload = () => {
+        const ctx = sc.getContext("2d");
+        ctx.clearRect(0, 0, sc.width, sc.height);
+        ctx.drawImage(img2, 0, 0, sc.width, sc.height);
+      };
+      img2.src = p._sigSnap;
+    }
+    markArtChanged(p);
+    markArtChanged(p, "sig");
+    renderLikePill(target);
+    ensureEmptySeats();
+    centerOn(target.g);
+    toast("Restored to the wall");
+    setRankTab("new", { fromUser: true });
+    scheduleSaveNow();
+  };
+  if (p._snap) {
+    const img = new Image();
+    img.onload = () => {
+      target.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      target.ctx.clearRect(0, 0, CELL, CELL);
+      target.ctx.drawImage(img, 0, 0, CELL, CELL);
+      finish();
+    };
+    img.onerror = finish;
+    img.src = p._snap;
+  } else {
+    finish();
+  }
+}
+
+function setReviewMode(on) {
+  reviewMode = !!on;
+  document.querySelector(".app").classList.toggle("review", reviewMode);
+  if (typeof exitIdle === "function" && idleOn) exitIdle();
+  clearTimeout(idleTimer);
+  if (reviewMode) {
+    clearTimeout(rankRotateTimer);
+    initPrintSetup(); // 每次进审核都重新拉一遍打印机列表，插拔后不用重启
+  } else {
+    if (curTab === "removed") setRankTab("top");
+    if (typeof bumpIdle === "function") bumpIdle();
+    scheduleRankRotate();
+  }
+  renderRank();
+  cells.forEach(c => {
+    if (c.filled && c.pizza && !c.pizza.removed) renderLikePill(c);
+  });
+  toast(reviewMode ? "Review mode on · tap ✕ to take down" : "Review mode off");
+}
+
+const rlist = document.getElementById("rlist");
+
+/* 榜单卡按 pizza id 复用。
+   之前每次点赞 / 每轮自动切 tab 都会 innerHTML="" 全量重建，
+   N 张披萨就是 N 个 240×240 canvas + N 组事件监听重来一遍，墙一大就顿。 */
+const rankCards = new Map();
+
+/** 画布内容变了才需要重画缩略图和重新编码 PNG，用 _rev 做版本号 */
+function markArtChanged(p, kind) {
+  if (!p) return;
+  if (kind === "sig") p._sigDirty = true;
+  else p._artDirty = true;
+  p._rev = (p._rev || 0) + 1;
+}
+
+/* 榜单面板是深蓝底，签名的深墨(#1A1A1F)会整个糊进去。
+   这里把签名重新上成白色；但它右下角有一块压在浅色饼皮上，
+   所以再加一圈暗描边，深浅底上都读得出来。 */
+function tintSig(src, color) {
+  const c = document.createElement("canvas");
+  c.width = src.width || src.naturalWidth;
+  c.height = src.height || src.naturalHeight;
+  const x = c.getContext("2d");
+  x.drawImage(src, 0, 0, c.width, c.height);
+  x.globalCompositeOperation = "source-in";
+  x.fillStyle = color;
+  x.fillRect(0, 0, c.width, c.height);
+  return c;
+}
+
+function drawThumbSig(rctx, src) {
+  if (!src) return;
+  const w = src.width || src.naturalWidth;
+  const h = src.height || src.naturalHeight;
+  if (!w || !h) return;
+  const sw = 96, sh = sw * (h / w);
+  rctx.save();
+  rctx.shadowColor = "rgba(0,0,0,0.9)";
+  rctx.shadowBlur = 5;
+  rctx.drawImage(tintSig(src, "#FFFFFF"), 240 - sw - 8, 240 - sh - 8, sw, sh);
+  rctx.restore();
+}
+
+function paintRankThumb(card, p) {
+  const rctx = card._rctx;
+  const cell = p.removed ? null : cells[p.cellIndex];
+  rctx.clearRect(0, 0, 240, 240);
+  if (p.removed && p._snap) {
+    const img = new Image();
+    img.onload = () => {
+      rctx.drawImage(img, 8, 2, 204, 204);
+      if (p._sigSnap) {
+        const img2 = new Image();
+        img2.onload = () => drawThumbSig(rctx, img2);
+        img2.src = p._sigSnap;
+      }
+    };
+    img.src = p._snap;
+  } else {
+    if (cell?.canvas) rctx.drawImage(cell.canvas, 8, 2, 204, 204);
+    drawThumbSig(rctx, cell?.sigCanvas || cell?.el.querySelector("canvas.sig-mark"));
+  }
+  card._paintedRev = p._rev || 0;
+}
+
+function buildRankCard(p) {
+  const card = document.createElement("div");
+  card.dataset.pid = p.id;
+  card._p = p;
+  card._removed = !!p.removed;
+  card._paintedRev = -1;
+
+  const no = document.createElement("div");
+  no.className = "rankno";
+  card.appendChild(no);
+  card._no = no;
+
+  const cv = document.createElement("canvas");
+  cv.width = 240; cv.height = 240;
+  card._rctx = cv.getContext("2d");
+  card.appendChild(cv);
+
+  card.onclick = ev => {
+    if (ev.target.closest(".likebtn, .rmbtn")) return;
+    const cur = card._p;
+    if (!cur || cur.removed) return;
+    const cell = cells[cur.cellIndex];
+    if (cell && cell.filled) {
+      centerOn(cell.g);
+      focusCell(cell);
+      flashCell(cell);
+    }
+  };
+
+  const meta = document.createElement("div");
+  meta.className = "card-meta";
+  if (p.removed) {
+    const rb = document.createElement("button");
+    rb.className = "rmbtn";
+    rb.style.display = "inline-flex";
+    rb.style.background = "var(--basil)";
+    rb.textContent = "Restore";
+    rb.onclick = ev => { ev.stopPropagation(); restorePizza(card._p); };
+    meta.appendChild(rb);
+  } else {
+    const lb = document.createElement("button");
+    lb.className = "likebtn";
+    lb.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.6-9.3-8.4C1 9.5 2.7 6 6 6c1.9 0 3.2 1.1 4 2.3C10.8 7.1 12.1 6 14 6c3.3 0 5 3.5 3.3 6.6C19 16.4 12 21 12 21z"/></svg><span></span>';
+    bindChargeLike(lb, () => card._p, (el) => {
+      const r = el.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    });
+    card._likeSpan = lb.querySelector("span");
+    meta.appendChild(lb);
+    const rb = document.createElement("button");
+    rb.className = "rmbtn";
+    rb.textContent = "Remove";
+    rb.onclick = ev => { ev.stopPropagation(); takeDownPizza(card._p); };
+    card.appendChild(rb);
+  }
+  card.appendChild(meta);
+  return card;
+}
+
+function syncRankCard(card, p, i, showRank) {
+  card._p = p;
+  const cls = "card" + (p.removed ? " removed-card" : "") + (showRank ? " has-rank" : "");
+  if (card.className !== cls) card.className = cls;
+
+  const no = card._no;
+  if (showRank) {
+    no.style.display = "";
+    no.textContent = "Top" + (i + 1);
+  } else if (curTab === "removed") {
+    no.style.display = "";
+    no.textContent = "✕";
+  } else {
+    no.style.display = "none";
+    no.textContent = ""; // 别留上一轮的名次文本
+  }
+
+  if (card._likeSpan && card._likeSpan.textContent !== String(p.likes)) {
+    card._likeSpan.textContent = p.likes;
+  }
+  if (card._paintedRev !== (p._rev || 0)) paintRankThumb(card, p);
+}
+
+function renderRank() {
+  updateAttractCounter();
+
+  let list;
+  if (curTab === "removed") {
+    list = [...removedPizzas()].sort((a, b) => (b.removedAt || 0) - (a.removedAt || 0));
+  } else {
+    list = visiblePizzas();
+    if (curTab === "top") list = [...list].sort((a, b) => b.likes - a.likes);
+    else if (curTab === "new") list = [...list].sort((a, b) => b.created - a.created);
+    else list = discoverOrder(list);
+  }
+
+  rlist.classList.toggle("is-top", curTab === "top");
+
+  if (!list.length) {
+    rankCards.forEach(card => card.remove());
+    rankCards.clear();
+    if (!rlist.firstElementChild) {
+      const empty = document.createElement("div");
+      empty.className = "rank-empty";
+      rlist.appendChild(empty);
+    }
+    rlist.firstElementChild.textContent =
+      curTab === "removed" ? "No taken-down pizzas" : "No pizzas yet — start drawing!";
+    applyNowPlaying();
+    return;
+  }
+
+  rlist.querySelector(".rank-empty")?.remove();
+
+  // 增量对齐：同一张披萨复用同一个 DOM 节点，只改名次/点赞数，缩略图仅在画布真变了时重画
+  const showRank = curTab === "top";
+  const seen = new Set();
+  list.forEach((p, i) => {
+    seen.add(p.id);
+    let card = rankCards.get(p.id);
+    if (card && card._removed !== !!p.removed) {
+      card.remove();
+      rankCards.delete(p.id);
+      card = null;
+    }
+    if (!card) {
+      card = buildRankCard(p);
+      rankCards.set(p.id, card);
+    }
+    syncRankCard(card, p, i, showRank);
+    if (rlist.children[i] !== card) rlist.insertBefore(card, rlist.children[i] || null);
+  });
+
+  rankCards.forEach((card, pid) => {
+    if (!seen.has(pid)) {
+      card.remove();
+      rankCards.delete(pid);
+    }
+  });
+
+  applyNowPlaying(); // 名次变动会重写 className，高亮重新贴一次
+}
+
+/* Random 页的顺序只在进入该页时洗一次。
+   之前每次 renderRank 都重新 shuffle，点个赞整列就跳一遍。 */
+let discoverIds = null;
+function resetDiscoverOrder() { discoverIds = null; }
+function discoverOrder(list) {
+  const byId = new Map(list.map(p => [p.id, p]));
+  const out = (discoverIds || []).map(id => byId.get(id)).filter(Boolean);
+  const known = new Set(out.map(p => p.id));
+  for (const p of list) {
+    if (!known.has(p.id)) out.splice(Math.floor(Math.random() * (out.length + 1)), 0, p);
+  }
+  discoverIds = out.map(p => p.id);
+  return out;
+}
+
+function flashCell(cell) {
+  if (!cell) return;
+  cell.el.classList.add("spotcell");
+  focusCell(cell, 1800);
+  setTimeout(() => cell.el.classList.remove("spotcell"), 1500);
+}
+
+function spotlight() {
+  if (reviewMode) return;
+  const drawn = visiblePizzas().filter(p => p.drawn);
+  if (!drawn.length) return;
+  drawn.sort((a, b) => a.likes - b.likes);
+  const p = drawn[Math.floor(Math.random() * Math.min(3, drawn.length))];
+  const cell = cells[p.cellIndex];
+  if (!cell || !cell.filled) return;
+  flashCell(cell);
+  const card = rlist.querySelector('.card[data-pid="' + p.id + '"]');
+  if (card) {
+    card.classList.add("spot");
+    setTimeout(() => card.classList.remove("spot"), 2200);
+  }
+}
+setInterval(spotlight, 5000);
+
+let toastTimer;
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+function seedPizza(cell, seed) {
+  makeCanvas(cell, seed + 40);
+  const ctx = cell.ctx;
+  const R = CELL / 2;
+  ctx.save();
+  clipToCrust(ctx, cell.crustSeed);
+  const toppings = ["#FF3B30", "#6BA86B", "#FFD23F", "#9C7BAA", "#1A1A1F", "#FF8C42"];
+  const rng = mulberry32(seed);
+  for (let i = 0; i < 16; i++) {
+    const a = rng() * Math.PI * 2;
+    const rr = rng() * (R - 42);
+    ctx.beginPath();
+    ctx.arc(R + Math.cos(a) * rr, R + Math.sin(a) * rr, 5 + rng() * 11, 0, Math.PI * 2);
+    ctx.fillStyle = toppings[Math.floor(rng() * toppings.length)];
+    ctx.globalAlpha = .88;
+    ctx.fill();
+  }
+  ctx.globalAlpha = .65;
+  ctx.strokeStyle = "#7a3b12";
+  ctx.lineWidth = 3;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  for (let i = 0; i < 36; i++) {
+    const a = i / 5.5;
+    const rr = 18 + i * 2.2;
+    const x = R + Math.cos(a) * (rr % 78);
+    const y = R + Math.sin(a) * (rr % 78);
+    if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  // 右下角落款签名（外侧图层，不与饼面重叠）
+  drawSeedSignature(cell, seed);
+
+  const idx = cells.indexOf(cell);
+  const p = {
+    id: uid++,
+    name: "signed",
+    likes: Math.floor(rng() * 900 + 40),
+    cellIndex: idx,
+    cell,
+    gridR: cell.g.r,
+    gridC: cell.g.c,
+    created: Date.now() - seed * 60000,
+    drawn: true,
+    signed: true
+  };
+  cell.pizza = p;
+  cell.filled = true;
+  cell.el.classList.add("filled");
+  cell.el.querySelector(".empty-label")?.remove();
+  pizzas.push(p);
+  renderLikePill(cell);
+}
+
+function computeWallScale() {
+  /* 榜单占左栏后，主视野大约 4 列 × 2.5 行；55 寸允许略大于 1 倍 */
+  const rankReserve = 228;
+  const byW = (viewport.clientWidth - rankReserve - 48) / (4 * SLOT);
+  const byH = (viewport.clientHeight - 96) / (2.6 * SLOT);
+  return Math.max(0.78, Math.min(1.08, Math.min(byW, byH)));
+}
+
+function layoutWall() {
+  scale = computeWallScale();
+  clampPan();
+  applyTransform();
+  cullCells();
+}
+
+function init() {
+  if (cells.length) centerOn(cells[0].g, false);
+  layoutWall();
+  renderRank();
+  scheduleRankRotate();
+  setTimeout(enterIdle, 1200);
+}
+window.addEventListener("resize", () => layoutWall());
+window.addEventListener("beforeunload", () => { if (dbReady) persistAll(); });
+
+bootPersistence().then(() => init()).then(() => refreshPrintCfg());
+
+/* 审核入口：榜单标题 2 秒内连点 5 次，或 Ctrl+Shift+M */
+(function wireReviewGesture() {
+  const title = document.getElementById("rankTitle");
+  let taps = [];
+  title.addEventListener("pointerdown", e => {
+    e.stopPropagation();
+    const now = Date.now();
+    taps = taps.filter(t => now - t < 2000);
+    taps.push(now);
+    if (taps.length >= 5) {
+      taps = [];
+      setReviewMode(!reviewMode);
+    }
+  });
+  window.addEventListener("keydown", e => {
+    if (e.ctrlKey && e.shiftKey && (e.key === "M" || e.key === "m")) {
+      e.preventDefault();
+      setReviewMode(!reviewMode);
+    }
+  });
+  document.getElementById("exitReview").onclick = () => setReviewMode(false);
+})();
+
+/* ==== 待机吸引态 ==== */
+const IDLE_MS = 28000;
+const appRoot = document.querySelector(".app");
+const attractEl = document.getElementById("attract");
+let idleTimer = null;
+let idleOn = false;
+let idleRaf = 0;
+let idlePhase = 0;
+
+function wakeBoard(fromCta) {
+  if (idleOn) exitIdle();
+  bumpIdle();
+  if (fromCta) document.getElementById("findseat").click();
+}
+
+function bumpIdle() {
+  clearTimeout(idleTimer);
+  if (overlay.classList.contains("show")) return; // 签名弹窗打开时不进待机
+  if (reviewMode) return; // 审核中不进待机
+  idleTimer = setTimeout(enterIdle, IDLE_MS);
+}
+
+function updateAttractCounter() {
+  const n = visiblePizzas().length;
+  const el = document.getElementById("attractCounter");
+  if (el) el.innerHTML = n > 0
+    ? `<strong>${n}</strong> pizza${n === 1 ? "" : "s"} on the wall`
+    : "Be the first to draw a pizza!";
+}
+
+/* ==== 幽灵画笔：待机时重放一位真实顾客的作画过程 ====
+   优先播放录下来的真实笔迹；没有录制就用成品图做显影；一张作品都没有时才程序生成。
+   坐标统一在 ghost 画布像素空间里算：格子坐标 × GHOST_K + 偏移。 */
+const GHOST_W = 640;
+const GHOST_K = 1.95;
+const GHOST_OX = 50, GHOST_OY = 14;
+const GHOST_CX = GHOST_OX + (CELL / 2) * GHOST_K;
+const GHOST_CY = GHOST_OY + (CELL / 2) * GHOST_K;
+const GHOST_R = (CELL / 2) * GHOST_K;
+const GHOST_SIG = { x: 366, y: 496, w: 252, h: 110 }; // 落款区：披萨外侧右下
+const GHOST_HOLD_MS = 3800;    // 画完后停留展示的时间
+const GHOST_INK_MS = 2.4;      // 每像素（ghost 画布）的播放耗时，笔画越长播得越久
+const GHOST_LIFT_MS = 180;     // 抬笔换下一笔的间隔
+const GHOST_PLAY_MAX_MS = 45000; // 极端长笔画的上限，避免一张饼占满待机
+const T_DOT = 55, T_PAUSE = 36; // 程序生成时的点、停顿节奏
+
+const ghostCanvas = document.getElementById("ghostCanvas");
+const ghostCtx = ghostCanvas.getContext("2d");
+const ghostWrap = document.querySelector(".ghost-wrap");
+const ghostBrush = document.getElementById("ghostBrush");
+const ghostCaption = document.getElementById("ghostCaption");
+
+let ghostRaf = 0;
+let ghostSeed = 1;
+let ghostRun = 0;
+let recentGhostIds = [];
+
+/** 把格子坐标系接到 ghost 画布上，之后可以直接复用 drawCrust / clipToCrust */
+function ghostSpace(ctx) {
+  ctx.translate(GHOST_OX, GHOST_OY);
+  ctx.scale(GHOST_K, GHOST_K);
+}
+
+/** 在 ghost 像素空间里裁出芝士区域，和真实画布用的是同一条路径 */
+function applyGhostClip(ctx, seed) {
+  ctx.save();
+  ghostSpace(ctx);
+  clipToCrust(ctx, seed);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+}
+
+/** 空盘（面饼）先出现，后面的配料才是「被画出来」的部分 */
+function drawGhostBase(seed) {
+  const ctx = ghostCtx;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, GHOST_W, GHOST_W);
+  ctx.save();
+  ghostSpace(ctx);
+  drawCrust(ctx, seed, true);
+  ctx.restore();
+}
+
+/** 录制的一笔 → 一串可播放的事件（坐标已换算到 ghost 画布） */
+function strokeDt(len) {
+  return Math.max(6, len * GHOST_INK_MS);
+}
+
+function pushRecStrokes(events, strokes, opts) {
+  const { sx, sy, ox, oy, widthScale, color, clip } = opts;
+  for (const s of strokes) {
+    const p = s.p;
+    const w = Math.max(2.5, (s.w ?? 5.5) * widthScale);
+    let px = 0, py = 0;
+    for (let i = 0; i < p.length; i += 3) {
+      const x = ox + p[i] * sx;
+      const y = oy + p[i + 1] * sy;
+      if (i === 0) {
+        events.push({
+          dt: s.gap ? GHOST_LIFT_MS : T_DOT,
+          kind: "dot", x, y, r: w / 2, color: color || s.c, clip
+        });
+      } else {
+        events.push({
+          dt: strokeDt(Math.hypot(x - px, y - py)), kind: "seg",
+          ax: px, ay: py, bx: x, by: y,
+          width: w, color: color || s.c, clip
+        });
+      }
+      px = x; py = y;
+    }
+  }
+}
+
+/** 签名录制在签名板坐标系里，按墨迹包围盒等比塞进落款区 */
+function pushSigStrokes(events, sig) {
+  const strokes = (sig?.strokes || []).filter(s => s.p.length >= 3);
+  if (!strokes.length) return;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const s of strokes) {
+    for (let i = 0; i < s.p.length; i += 3) {
+      minX = Math.min(minX, s.p[i]); maxX = Math.max(maxX, s.p[i]);
+      minY = Math.min(minY, s.p[i + 1]); maxY = Math.max(maxY, s.p[i + 1]);
+    }
+  }
+  const pad = 8;
+  minX -= pad; minY -= pad; maxX += pad; maxY += pad;
+  const bw = Math.max(1, maxX - minX), bh = Math.max(1, maxY - minY);
+  const k = Math.min(GHOST_SIG.w / bw, GHOST_SIG.h / bh);
+  pushRecStrokes(events, strokes, {
+    sx: k, sy: k,
+    ox: GHOST_SIG.x + (GHOST_SIG.w - bw * k) / 2 - minX * k,
+    oy: GHOST_SIG.y + (GHOST_SIG.h - bh * k) / 2 - minY * k,
+    widthScale: k,
+    color: "#FFFFFF",
+    clip: false
+  });
+}
+
+function buildReplayTimeline(rec) {
+  const events = [];
+  pushRecStrokes(events, rec.strokes, {
+    sx: GHOST_K / 8, sy: GHOST_K / 8,
+    ox: GHOST_OX, oy: GHOST_OY,
+    widthScale: GHOST_K,
+    color: null,
+    clip: true
+  });
+  if (rec.sig) {
+    events.push({ dt: 800, kind: "wait" });
+    pushSigStrokes(events, rec.sig);
+  }
+  return events;
+}
+
+function buildGhostTimeline(seed) {
+  const rng = mulberry32(seed);
+  const ticks = [];
+  const cx = GHOST_CX, cy = GHOST_CY, R = GHOST_R;
+  const inner = R - 62;
+
+  const pushStroke = (pts, color, width, clip) => {
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i];
+      ticks.push({
+        dt: strokeDt(Math.hypot(b.x - a.x, b.y - a.y)),
+        kind: "seg", ax: a.x, ay: a.y, bx: b.x, by: b.y, color, width, clip
+      });
+    }
+  };
+  const pause = n => ticks.push({ dt: n * T_PAUSE, kind: "wait" });
+
+  // 1) 番茄酱：从中心一圈圈抹开
+  const sauce = [];
+  const steps = 130;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const a = t * Math.PI * 2 * 3.4;
+    const rr = 10 + t * inner;
+    sauce.push({ x: cx + Math.cos(a) * rr, y: cy + Math.sin(a) * rr });
+  }
+  pushStroke(sauce, "#D8382C", 30, true);
+  pause(10);
+
+  // 2) 芝士：随手洒的小块
+  for (let i = 0; i < 20; i++) {
+    const a = rng() * Math.PI * 2;
+    const rr = rng() * inner;
+    ticks.push({
+      kind: "dot", clip: true,
+      x: cx + Math.cos(a) * rr, y: cy + Math.sin(a) * rr,
+      r: 12 + rng() * 16, color: "#FFE9A3", alpha: 0.9
+    });
+    pause(1);
+  }
+  pause(8);
+
+  // 3) 主料：一片片摆上去
+  const topping = ["#FF3B30", "#FF8C42", "#9C7BAA"][Math.floor(rng() * 3)];
+  const count = 7 + Math.floor(rng() * 4);
+  for (let i = 0; i < count; i++) {
+    const a = (i / count) * Math.PI * 2 + rng() * 0.5;
+    const rr = inner * (0.35 + rng() * 0.55);
+    ticks.push({
+      kind: "dot", clip: true,
+      x: cx + Math.cos(a) * rr, y: cy + Math.sin(a) * rr,
+      r: 22 + rng() * 10, color: topping, alpha: 0.95, ring: true
+    });
+    pause(4);
+  }
+  pause(8);
+
+  // 4) 罗勒叶：几笔绿色短线
+  for (let i = 0; i < 5; i++) {
+    const a = rng() * Math.PI * 2;
+    const rr = rng() * inner * 0.85;
+    const bx = cx + Math.cos(a) * rr, by = cy + Math.sin(a) * rr;
+    const leaf = [];
+    const dir = rng() * Math.PI * 2;
+    for (let k = 0; k <= 8; k++) {
+      const t = k / 8;
+      leaf.push({
+        x: bx + Math.cos(dir) * t * 34,
+        y: by + Math.sin(dir) * t * 34 + Math.sin(t * Math.PI) * 12
+      });
+    }
+    pushStroke(leaf, "#6BA86B", 11, true);
+    pause(2);
+  }
+  pause(6);
+
+  // 5) 黑橄榄点缀
+  for (let i = 0; i < 6; i++) {
+    const a = rng() * Math.PI * 2;
+    const rr = rng() * inner * 0.9;
+    ticks.push({
+      kind: "dot", clip: true,
+      x: cx + Math.cos(a) * rr, y: cy + Math.sin(a) * rr,
+      r: 8 + rng() * 5, color: "#1A1A1F", alpha: 0.85
+    });
+    pause(2);
+  }
+  pause(14);
+
+  // 6) 右下角落款：告诉路人「画完要签名」
+  const sig = [];
+  let sx = 384, sy = 548;
+  sig.push({ x: sx, y: sy });
+  const strokes = 3 + Math.floor(rng() * 2);
+  for (let s = 0; s < strokes; s++) {
+    const len = 44 + rng() * 34;
+    const amp = 13 + rng() * 16;
+    const waves = 2 + Math.floor(rng() * 3);
+    for (let k = 1; k <= 14; k++) {
+      const t = k / 14;
+      sig.push({
+        x: sx + len * t,
+        y: sy + Math.sin(t * Math.PI * waves) * amp * (1 - t * 0.2)
+      });
+    }
+    sx += len * 0.6;
+    sy += (rng() - 0.5) * 12;
+  }
+  pushStroke(sig, "#FFFFFF", 8, false);
+
+  return ticks;
+}
+
+function drawGhostEvent(ctx, t) {
+  if (t.kind === "seg") {
+    ctx.strokeStyle = t.color;
+    ctx.lineWidth = t.width;
+    ctx.beginPath();
+    ctx.moveTo(t.ax, t.ay);
+    ctx.lineTo(t.bx, t.by);
+    ctx.stroke();
+  } else if (t.kind === "dot") {
+    ctx.globalAlpha = t.alpha ?? 1;
+    ctx.fillStyle = t.color;
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
+    ctx.fill();
+    if (t.ring) {
+      ctx.globalAlpha = 0.4;
+      ctx.strokeStyle = "#8B2018";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+/** 一帧里的事件合批画：披萨部分只 clip 一次，几千段笔迹也不掉帧 */
+function drawGhostBatch(batch, seed) {
+  const ctx = ghostCtx;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  let clipped = false;
+  for (const t of batch) {
+    if (t.kind === "wait") continue;
+    if (t.clip && !clipped) { applyGhostClip(ctx, seed); ctx.lineCap = "round"; ctx.lineJoin = "round"; clipped = true; }
+    else if (!t.clip && clipped) { ctx.restore(); clipped = false; }
+    drawGhostEvent(ctx, t);
+  }
+  if (clipped) ctx.restore();
+}
+
+function moveGhostBrush(t) {
+  let x, y;
+  if (t.kind === "seg") { x = t.bx; y = t.by; }
+  else if (t.kind === "dot") { x = t.x; y = t.y; }
+  else return;
+  ghostBrush.style.left = (x / GHOST_W * 100) + "%";
+  ghostBrush.style.top = (y / GHOST_W * 100) + "%";
+}
+
+/** 真实录制可能是 20 秒也可能是 5 分钟，压到差不多的时长再播 */
+function playbackRate(events) {
+  let total = 0;
+  for (const e of events) total += e.dt ?? T_DOT;
+  if (total <= GHOST_PLAY_MAX_MS) return 1;
+  return total / GHOST_PLAY_MAX_MS;
+}
+
+function runGhostTimeline(events, seed, myRun, onDone) {
+  let idx = 0;
+  let budget = 0;
+  let lastNow = performance.now();
+  const rate = playbackRate(events);
+  const step = now => {
+    if (!idleOn || myRun !== ghostRun) return;
+    budget += Math.min(120, now - lastNow) * rate;
+    lastNow = now;
+    const batch = [];
+    let guard = 0;
+    while (idx < events.length && guard++ < 6000) {
+      const cost = events[idx].dt ?? T_DOT;
+      if (budget < cost) break;
+      budget -= cost;
+      batch.push(events[idx++]);
+    }
+    if (batch.length) {
+      drawGhostBatch(batch, seed);
+      for (let i = batch.length - 1; i >= 0; i--) {
+        if (batch[i].kind !== "wait") { moveGhostBrush(batch[i]); break; }
+      }
+    }
+    if (idx < events.length) { ghostRaf = requestAnimationFrame(step); return; }
+    onDone();
+  };
+  ghostRaf = requestAnimationFrame(step);
+}
+
+/** 没有笔迹录制时的兜底：把成品图从中心一圈圈显影出来 */
+function runGhostReveal(subject, seed, myRun, onDone) {
+  const D = 6500;
+  const maxR = GHOST_R * 1.18;
+  const t0 = performance.now();
+  let prevR = 0;
+  const step = now => {
+    if (!idleOn || myRun !== ghostRun) return;
+    const p = Math.min(1, (now - t0) / D);
+    const curR = maxR * p;
+    if (curR > prevR) {
+      const ctx = ghostCtx;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(GHOST_CX, GHOST_CY, curR, 0, Math.PI * 2);
+      ctx.arc(GHOST_CX, GHOST_CY, prevR, 0, Math.PI * 2, true);
+      ctx.clip("evenodd");
+      ghostSpace(ctx);
+      ctx.drawImage(subject.art, 0, 0, CELL, CELL);
+      ctx.restore();
+      prevR = curR;
+    }
+    const a = p * Math.PI * 2 * 3;
+    ghostBrush.style.left = ((GHOST_CX + Math.cos(a) * curR) / GHOST_W * 100) + "%";
+    ghostBrush.style.top = ((GHOST_CY + Math.sin(a) * curR) / GHOST_W * 100) + "%";
+    if (p < 1) { ghostRaf = requestAnimationFrame(step); return; }
+    if (subject.sig) {
+      const box = GHOST_SIG;
+      const k = Math.min(box.w / subject.sig.width, box.h / subject.sig.height);
+      const w = subject.sig.width * k, h = subject.sig.height * k;
+      ghostCtx.drawImage(
+        whiten(subject.sig),
+        box.x + (box.w - w) / 2, box.y + (box.h - h) / 2, w, h
+      );
+    }
+    onDone();
+  };
+  ghostRaf = requestAnimationFrame(step);
+}
+
+/** 签名墨色是深色，落在待机深底上看不见 —— 取轮廓刷成白色 */
+function whiten(src) {
+  const cv = document.createElement("canvas");
+  cv.width = src.width; cv.height = src.height;
+  const c = cv.getContext("2d");
+  c.drawImage(src, 0, 0);
+  c.globalCompositeOperation = "source-in";
+  c.fillStyle = "#FFFFFF";
+  c.fillRect(0, 0, cv.width, cv.height);
+  return cv;
+}
+
+function timeAgo(ts) {
+  const m = Math.floor((Date.now() - ts) / 60000);
+  if (m < 2) return "just now";
+  if (m < 60) return m + " min ago";
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + (h === 1 ? " hour ago" : " hours ago");
+  const d = Math.floor(h / 24);
+  return d === 1 ? "yesterday" : d + " days ago";
+}
+
+function pickGhostFrom(pool) {
+  const fresh = pool.filter(p => !recentGhostIds.includes(p.id));
+  const src = fresh.length ? fresh : pool;
+  const p = src[Math.floor(Math.random() * src.length)];
+  recentGhostIds.push(p.id);
+  if (recentGhostIds.length > 6) recentGhostIds.shift();
+  return p;
+}
+
+/* 待机播放列表：冠军和新作交替，既有羡慕感也有新鲜感 */
+const GHOST_PLAYLIST = ["top1", "new", "top2", "random", "top3", "new"];
+let ghostSlot = -1;
+let lastPlayedId = null;
+
+function ghostPool() {
+  return pizzas.filter(p => !p.removed && p.signed && cells[p.cellIndex]?.canvas);
+}
+
+/** 榜单口径要和 renderRank 一致，否则高亮会对不上 */
+function rankedPool() {
+  return [...ghostPool()].sort((a, b) => b.likes - a.likes);
+}
+
+function resolveSlot(slot) {
+  const pool = ghostPool();
+  if (!pool.length) return null;
+  if (slot === "new") {
+    return pool.reduce((a, b) => (b.created > a.created ? b : a));
+  }
+  if (slot === "random") return pickGhostFrom(pool);
+  const idx = { top1: 0, top2: 1, top3: 2 }[slot] ?? 0;
+  return rankedPool()[idx] || null;
+}
+
+async function pickGhostSubject() {
+  const pool = ghostPool();
+  if (!pool.length) return { mode: "procedural", seed: (Math.floor(Math.random() * 9000) + 100) | 0 };
+
+  // 从当前槽位往后找第一个能落到作品上的槽，墙上只有一两张时不会卡住。
+  // 槽位不在这里推进——要等这一轮确认开播才提交，否则被抢占的轮次会吃掉一个槽。
+  let pizza = null, slot = "random", slotIndex = null;
+  for (let i = 1; i <= GHOST_PLAYLIST.length; i++) {
+    const idx = (ghostSlot + i) % GHOST_PLAYLIST.length;
+    const p = resolveSlot(GHOST_PLAYLIST[idx]);
+    if (!p) continue;
+    // 榜首常常也是最新的那张，连播同一张就没意思了
+    if (p.id === lastPlayedId && pool.length > 1) { slotIndex = idx; continue; }
+    slotIndex = idx; pizza = p; slot = GHOST_PLAYLIST[idx];
+    break;
+  }
+  if (!pizza) pizza = pickGhostFrom(pool);
+
+  const rankIdx = rankedPool().indexOf(pizza);
+  const base = { pizza, slot, slotIndex, rank: rankIdx >= 0 ? rankIdx + 1 : null };
+
+  if (recordingIds.has(pizza.id)) {
+    const rec = await getRecording(pizza.id);
+    if (rec?.strokes?.length) {
+      return { ...base, mode: "replay", rec, seed: rec.crustSeed ?? pizza.crustSeed };
+    }
+  }
+  const cell = cells[pizza.cellIndex];
+  return {
+    ...base, mode: "reveal", seed: pizza.crustSeed ?? cell.crustSeed,
+    art: cell.canvas, sig: cell.sigCanvas || cell.el.querySelector("canvas.sig-mark")
+  };
+}
+
+function setGhostCaption(subject) {
+  if (!ghostCaption) return;
+  if (subject.mode === "procedural") {
+    ghostCaption.textContent = "Nobody has drawn yet — go first";
+    return;
+  }
+  const p = subject.pizza;
+  const fresh = Date.now() - p.created < 2 * 60 * 60 * 1000;
+  if (subject.slot === "new" && fresh) {
+    ghostCaption.innerHTML = "Just drawn · <b>" + timeAgo(p.created) + "</b>";
+  } else if (subject.rank && subject.rank <= 3 && p.likes > 0) {
+    ghostCaption.innerHTML = "#" + subject.rank + " on the wall · <b>"
+      + p.likes + (p.likes === 1 ? " like" : " likes") + "</b>";
+  } else {
+    ghostCaption.innerHTML = "Someone drew this <b>" + timeAgo(p.created) + "</b>";
+  }
+}
+
+/* ==== 重放与榜单联动 ==== */
+let nowPlayingId = null;
+
+/* 定时器按轮次统一登记：被抢占的旧轮次不会再挤掉当前轮的句柄 */
+const ghostTimers = new Set();
+function ghostWait(ms) {
+  return new Promise(res => {
+    const id = setTimeout(() => { ghostTimers.delete(id); res(); }, ms);
+    ghostTimers.add(id);
+  });
+}
+function clearGhostTimers() {
+  ghostTimers.forEach(clearTimeout);
+  ghostTimers.clear();
+}
+
+function applyNowPlaying() {
+  rlist.querySelectorAll(".card").forEach(c => {
+    c.classList.toggle("now-playing", nowPlayingId != null && +c.dataset.pid === nowPlayingId);
+  });
+  rankDock.classList.toggle("has-now-playing", nowPlayingId != null);
+}
+
+function setNowPlaying(id) {
+  nowPlayingId = id ?? null;
+  applyNowPlaying();
+}
+
+/** 收尾：成品缩小飞进榜单对应卡片，把「画完就能上榜」演出来 */
+function flyToRank(pizzaId) {
+  const card = rlist.querySelector('.card[data-pid="' + pizzaId + '"]');
+  const target = card?.querySelector("canvas");
+  if (!target) return Promise.resolve();
+  const from = ghostCanvas.getBoundingClientRect();
+  const to = target.getBoundingClientRect();
+  if (!from.width || !to.width) return Promise.resolve();
+
+  const fly = document.createElement("canvas");
+  fly.className = "ghost-fly";
+  fly.width = GHOST_W; fly.height = GHOST_W;
+  fly.getContext("2d").drawImage(ghostCanvas, 0, 0);
+  fly.style.left = from.left + "px";
+  fly.style.top = from.top + "px";
+  fly.style.width = from.width + "px";
+  fly.style.height = from.height + "px";
+  document.body.appendChild(fly);
+  ghostCanvas.style.opacity = "0";
+  void fly.offsetWidth; // 先结算一次初始样式，否则过渡不会启动
+
+  const s = to.width / from.width;
+  const dx = (to.left + to.width / 2) - (from.left + from.width / 2);
+  const dy = (to.top + to.height / 2) - (from.top + from.height / 2);
+  fly.style.transform = "translate(" + dx + "px," + dy + "px) scale(" + s + ")";
+  fly.style.opacity = "0.2";
+
+  return ghostWait(820).then(() => {
+    fly.remove();
+    card.classList.add("rank-hit");
+    setTimeout(() => card.classList.remove("rank-hit"), 700);
+  });
+}
+
+async function startGhostCycle() {
+  if (!idleOn) return;
+  const myRun = ++ghostRun;
+  let subject;
+  try { subject = await pickGhostSubject(); }
+  catch (_) { subject = { mode: "procedural", seed: 1234 }; }
+  if (!idleOn || myRun !== ghostRun) return;
+
+  if (subject.slotIndex != null) ghostSlot = subject.slotIndex;
+  if (subject.pizza) lastPlayedId = subject.pizza.id;
+  ghostSeed = subject.seed ?? 1234;
+  ghostCanvas.style.opacity = "";
+  ghostWrap.classList.add("drawing");
+  setGhostCaption(subject);
+  drawGhostBase(ghostSeed);
+
+  // 画完：收笔、停一会儿再放下一张（榜单待机时隐藏，不再飞入）
+  const alive = () => idleOn && myRun === ghostRun;
+  const finish = async () => {
+    ghostWrap.classList.remove("drawing");
+    await ghostWait(GHOST_HOLD_MS);
+    if (alive()) startGhostCycle();
+  };
+
+  if (subject.mode === "replay") {
+    runGhostTimeline(buildReplayTimeline(subject.rec), ghostSeed, myRun, finish);
+  } else if (subject.mode === "reveal") {
+    runGhostReveal(subject, ghostSeed, myRun, finish);
+  } else {
+    runGhostTimeline(buildGhostTimeline(ghostSeed), ghostSeed, myRun, finish);
+  }
+}
+
+function stopGhost() {
+  ghostRun++;
+  cancelAnimationFrame(ghostRaf);
+  ghostRaf = 0;
+  clearGhostTimers();
+  ghostWrap.classList.remove("drawing");
+  ghostCanvas.style.opacity = "";
+  document.querySelectorAll(".ghost-fly").forEach(n => n.remove());
+}
+
+function enterIdle() {
+  if (idleOn || overlay.classList.contains("show") || reviewMode) return;
+  idleOn = true;
+  setDrawing(false);
+  updateAttractCounter();
+  appRoot.classList.add("idle");
+  attractEl.setAttribute("aria-hidden", "false");
+  startGhostCycle();
+  idlePhase = Math.random() * Math.PI * 2;
+  cancelAnimationFrame(idleRaf);
+
+  // 墙面漂移是极慢的位移，没必要跟满 60fps——待机时幽灵重放也在跑 rAF，
+  // 两个循环抢主线程反而更抖。这里限到 30fps，并缓存墙面包围盒。
+  const IDLE_FRAME_MS = 33;
+  let lastIdleFrame = 0;
+  let bounds = null, boundsAt = 0;
+  const wallBounds = now => {
+    if (bounds && now - boundsAt < 2000) return bounds;
+    const filled = cells.filter(c => c.filled);
+    const src = filled.length ? filled : cells;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const cell of src) {
+      minX = Math.min(minX, cell.g.x);
+      minY = Math.min(minY, cell.g.y);
+      maxX = Math.max(maxX, cell.g.x + CELL);
+      maxY = Math.max(maxY, cell.g.y + CELL);
+    }
+    bounds = { minX, minY, maxX, maxY };
+    boundsAt = now;
+    return bounds;
+  };
+
+  const tick = now => {
+    if (!idleOn) return;
+    if (now - lastIdleFrame < IDLE_FRAME_MS) {
+      idleRaf = requestAnimationFrame(tick);
+      return;
+    }
+    lastIdleFrame = now;
+    idlePhase += 0.0016 * 2; // 降帧后步进翻倍，保持原来的漂移速度
+    const vw = viewport.clientWidth, vh = viewport.clientHeight;
+    const { minX, minY, maxX, maxY } = wallBounds(now);
+    const cxWorld = (minX + maxX) / 2 + Math.sin(idlePhase) * (maxX - minX) * 0.28;
+    const cyWorld = (minY + maxY) / 2 + Math.cos(idlePhase * 0.73) * (maxY - minY) * 0.28;
+    panX = vw / 2 - cxWorld * scale;
+    panY = vh / 2 - cyWorld * scale;
+    clampPan();
+    applyTransform();
+    idleRaf = requestAnimationFrame(tick);
+  };
+  idleRaf = requestAnimationFrame(tick);
+  clearTimeout(rankRotateTimer);
+}
+
+function exitIdle() {
+  if (!idleOn) return;
+  idleOn = false;
+  stopGhost();
+  appRoot.classList.remove("idle");
+  attractEl.setAttribute("aria-hidden", "true");
+  cancelAnimationFrame(idleRaf);
+  idleRaf = 0;
+  scheduleRankRotate();
+}
+
+document.getElementById("attractStart").onclick = e => {
+  e.stopPropagation();
+  wakeBoard(true);
+};
+attractEl.addEventListener("pointerdown", e => {
+  if (e.target.closest("#attractStart")) return;
+  wakeBoard(false);
+});
+
+(function wireIdleActivity() {
+  const onActivity = (e) => {
+    if (idleOn) {
+      if (e.type === "pointermove" || e.type === "wheel") return;
+      if (attractEl.contains(e.target)) return;
+      wakeBoard(false);
+      return;
+    }
+    bumpIdle();
+  };
+  window.addEventListener("pointerdown", onActivity, true);
+  window.addEventListener("keydown", onActivity, true);
+  window.addEventListener("wheel", () => { if (!idleOn) bumpIdle(); }, { passive: true });
+  const mo = new MutationObserver(() => {
+    if (overlay.classList.contains("show")) {
+      clearTimeout(idleTimer);
+      if (idleOn) exitIdle();
+    } else {
+      bumpIdle();
+    }
+  });
+  mo.observe(overlay, { attributes: true, attributeFilter: ["class"] });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>披萨画板 · Pizza Wall</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet" />
+<style>
+  /* ==== Design System v4 · Blue Field + Flat Pizza Characters ====
+     核心：深蓝纯色场 + 扁平高饱和披萨角色 + 45° 长硬阴影 + 无机几何 UI
+  */
+  :root {
+    --bg:           #2E4DB5;
+    --bg-dark:      #1A2E6B;
+    --shadow:       rgba(15, 28, 78, 0.55);
+    --text:         #FFFFFF;
+    --text-muted:   rgba(255,255,255,0.62);
+    --accent:       #FF4D4D;
+    --accent-dark:  #CC2222;
+    --field:        #243FA3;
+    --font-display: "Inter", "Noto Sans SC", system-ui, sans-serif;
+    --font-body:    "Inter", "Noto Sans SC", system-ui, sans-serif;
+    --plate-base:   170px;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; width: 100%;
+    font-family: var(--font-body);
+    color: var(--text);
+    background: var(--bg);
+    overflow: hidden;
+  }
+
+  /* 背景几何装饰 */
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(circle at 12% 18%, rgba(255,255,255,0.04) 0 18%, transparent 18%),
+      radial-gradient(circle at 88% 82%, rgba(255,255,255,0.04) 0 22%, transparent 22%),
+      radial-gradient(circle at 72% 14%, rgba(255,255,255,0.03) 0 14%, transparent 14%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ==== Header：几何极简 ==== */
+  .header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 28px;
+    background: var(--bg);
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    font-family: var(--font-display);
+    font-size: 19px; font-weight: 800;
+    color: var(--text); letter-spacing: -0.6px;
+  }
+  .brand-icon { width: 32px; height: 32px; }
+  .header-right {
+    display: flex; align-items: center; gap: 18px;
+  }
+  .stats {
+    display: flex; align-items: baseline; gap: 18px;
+    font-family: var(--font-display);
+    font-size: 13px; font-weight: 600;
+    color: var(--text-muted);
+  }
+  .stats b { color: var(--text); font-weight: 800; margin-right: 3px; }
+  .btn-draw {
+    font-family: var(--font-display);
+    font-size: 13px; font-weight: 700;
+    padding: 10px 20px;
+    border: none; border-radius: 4px;
+    background: var(--accent); color: #fff;
+    cursor: pointer;
+    box-shadow: 4px 4px 0 var(--accent-dark);
+    transition: transform .1s, box-shadow .1s;
+    letter-spacing: 0.2px;
+  }
+  .btn-draw:hover { transform: translate(-1px, -1px); box-shadow: 5px 5px 0 var(--accent-dark); }
+  .btn-draw:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--accent-dark); }
+
+  /* ==== 墙面 ==== */
+  .wall {
+    position: fixed; inset: 0;
+    top: 64px;
+    overflow: hidden;
+    z-index: 1;
+  }
+
+  /* ==== 单个披萨项 ==== */
+  .pizza-item {
+    position: absolute;
+    cursor: pointer;
+    transition: transform .28s cubic-bezier(.34,1.56,.64,1), z-index 0s;
+    will-change: transform;
+    filter: drop-shadow(8px 8px 0 var(--shadow));
+  }
+  .pizza-item:hover {
+    z-index: 80 !important;
+    transform: scale(1.12) rotate(var(--rot)) !important;
+    filter: drop-shadow(12px 12px 0 rgba(15, 28, 78, 0.7));
+  }
+  .pizza-item:active { transition-duration: .1s; transform: scale(1.05) rotate(var(--rot)) !important; }
+
+  @keyframes scatter-in {
+    from { opacity: 0; transform: scale(.25) rotate(var(--rot)) translateY(50px); }
+    to   { opacity: 1; transform: scale(1) rotate(var(--rot)) translateY(0); }
+  }
+  .pizza-item { animation: scatter-in .55s cubic-bezier(.34,1.56,.64,1) backwards; }
+
+  .plate {
+    width: var(--size, var(--plate-base));
+    height: var(--size, var(--plate-base));
+    border-radius: 50%;
+    background: #FFD93D;
+    position: relative;
+    overflow: hidden;
+  }
+  .plate canvas { width: 100%; height: 100%; border-radius: 50%; }
+
+  /* 空盘 */
+  .plate.empty {
+    background: transparent;
+    border: 3px dashed rgba(255,255,255,0.35);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .plate.empty::after {
+    content: "+";
+    font-family: var(--font-display);
+    font-size: 44px; font-weight: 800;
+    color: rgba(255,255,255,0.55);
+  }
+
+  /* hover 名字标签 */
+  .name-tag {
+    position: absolute;
+    bottom: -12px;
+    left: 50%;
+    transform: translateX(-50%) rotate(calc(-1 * var(--rot))) scale(0.9);
+    background: var(--bg-dark);
+    padding: 5px 12px;
+    border-radius: 3px;
+    font-family: var(--font-display);
+    font-size: 11px; font-weight: 700;
+    color: #fff;
+    white-space: nowrap;
+    max-width: 150px;
+    overflow: hidden; text-overflow: ellipsis;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s, transform .2s;
+  }
+  .pizza-item:hover .name-tag { opacity: 1; transform: translateX(-50%) rotate(calc(-1 * var(--rot))) scale(1); }
+
+  /* 点赞 */
+  .like-btn {
+    position: absolute;
+    top: -2px; right: -2px;
+    display: flex; align-items: center; gap: 3px;
+    background: #fff;
+    border-radius: 3px;
+    padding: 4px 7px;
+    font-family: var(--font-display);
+    font-size: 10px; font-weight: 800;
+    color: var(--bg-dark);
+    cursor: pointer;
+    z-index: 3;
+    transition: all .12s;
+    box-shadow: 2px 2px 0 rgba(15,28,78,0.4);
+  }
+  .like-btn:hover { transform: scale(1.1); background: var(--accent); color: #fff; }
+  .like-btn:active { transform: scale(.95); }
+  .like-btn.liked { background: var(--accent); color: #fff; }
+  .like-btn svg { width: 11px; height: 11px; flex-shrink: 0; }
+
+  .pizza-item.is-new { filter: drop-shadow(6px 6px 0 rgba(15,28,78,0.35)); }
+  .pizza-item.is-new .plate.empty { width: 120px; height: 120px; border-color: rgba(255,255,255,0.5); }
+  .pizza-item.is-new .plate.empty::after { color: rgba(255,255,255,0.7); }
+
+  /* ==== 绘制 Overlay ==== */
+  .draw-overlay {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    z-index: 200;
+    display: none; flex-direction: column;
+    opacity: 0; transition: opacity .3s;
+  }
+  .draw-overlay.show { display: flex; opacity: 1; }
+
+  .draw-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 28px;
+    background: var(--bg);
+  }
+  .draw-back {
+    display: flex; align-items: center; gap: 6px;
+    font-family: var(--font-display);
+    font-size: 14px; font-weight: 600;
+    color: var(--text-muted);
+    background: none; border: none;
+    cursor: pointer; padding: 8px 14px;
+    border-radius: 4px; transition: background .12s, color .12s;
+  }
+  .draw-back:hover { background: var(--field); color: #fff; }
+  .draw-title {
+    font-family: var(--font-display);
+    font-size: 16px; font-weight: 800;
+  }
+  .draw-save-btn {
+    font-family: var(--font-display);
+    font-size: 13px; font-weight: 700;
+    padding: 10px 22px;
+    border: none; border-radius: 4px;
+    background: var(--accent); color: #fff;
+    cursor: pointer; transition: transform .12s;
+    box-shadow: 4px 4px 0 var(--accent-dark);
+  }
+  .draw-save-btn:hover { transform: translate(-1px, -1px); box-shadow: 5px 5px 0 var(--accent-dark); }
+  .draw-save-btn:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--accent-dark); }
+
+  .draw-stage {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    padding: 24px; overflow: hidden;
+  }
+  .draw-plate {
+    width: 380px; height: 380px;
+    border-radius: 50%;
+    background: #FFD93D;
+    box-shadow: 12px 12px 0 rgba(15,28,78,0.5);
+    position: relative; overflow: hidden;
+  }
+  .draw-plate canvas { width: 100%; height: 100%; border-radius: 50%; touch-action: none; }
+
+  .draw-toolbar {
+    position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 10px;
+    background: var(--bg-dark);
+    border-radius: 4px;
+    padding: 10px 16px;
+    box-shadow: 6px 6px 0 rgba(10,20,60,0.6);
+  }
+  .color-swatch {
+    width: 26px; height: 26px; border-radius: 3px;
+    border: 2px solid transparent; cursor: pointer;
+    transition: transform .12s, border-color .12s;
+    box-shadow: 2px 2px 0 rgba(0,0,0,0.25);
+  }
+  .color-swatch:hover { transform: scale(1.12); }
+  .color-swatch.active { border-color: #fff; transform: scale(1.15); }
+  .toolbar-divider { width: 1px; height: 24px; background: rgba(255,255,255,0.15); }
+  .tool-btn {
+    font-family: var(--font-display); font-size: 12px; font-weight: 700;
+    padding: 7px 13px; border: 1.5px solid rgba(255,255,255,0.25);
+    border-radius: 3px; background: transparent; color: #fff;
+    cursor: pointer; transition: all .1s;
+  }
+  .tool-btn:hover { border-color: #fff; }
+  .tool-btn.active { background: #fff; color: var(--bg-dark); border-color: #fff; }
+  .brush-size {
+    display: flex; align-items: center; gap: 6px;
+    font-family: var(--font-display); font-size: 11px; font-weight: 600;
+    color: var(--text-muted);
+  }
+  .brush-size input { width: 70px; accent-color: var(--accent); }
+
+  .float-heart {
+    position: fixed; pointer-events: none; z-index: 300;
+    font-size: 22px;
+    animation: heart-float 1.2s ease-out forwards;
+  }
+  @keyframes heart-float {
+    0%   { opacity: 1; transform: translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateY(-110px) scale(1.6) rotate(18deg); }
+  }
+
+  .toast {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+    background: #fff; color: var(--bg-dark);
+    font-family: var(--font-display);
+    font-size: 13px; font-weight: 700;
+    padding: 10px 20px; border-radius: 4px;
+    z-index: 400; opacity: 0; transition: opacity .3s;
+    pointer-events: none;
+    box-shadow: 4px 4px 0 rgba(15,28,78,0.35);
+  }
+  .toast.show { opacity: 1; }
+
+  @media (max-width: 768px) {
+    :root { --plate-base: 120px; }
+    .header { padding: 12px 16px; }
+    .brand { font-size: 16px; } .brand-icon { width: 28px; height: 28px; }
+    .stats { display: none; }
+    .btn-draw { font-size: 12px; padding: 8px 14px; }
+    .wall { top: 56px; }
+    .draw-plate { width: 290px; height: 290px; }
+    .draw-toolbar { padding: 8px 12px; gap: 6px; flex-wrap: wrap; max-width: 92%; }
+  }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="brand">
+    <svg class="brand-icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="20" cy="20" r="16" fill="#FFD93D"/>
+      <circle cx="20" cy="20" r="12" fill="#FF6B6B" opacity=".25"/>
+      <circle cx="14" cy="16" r="2.5" fill="#4ECDC4"/>
+      <circle cx="25" cy="22" r="2" fill="#95E1D3"/>
+      <circle cx="22" cy="14" r="1.5" fill="#2D2926"/>
+      <circle cx="18" cy="24" r="2" fill="#FF8C42"/>
+    </svg>
+    <span>Pizza Wall</span>
+  </div>
+  <div class="header-right">
+    <div class="stats"><div><b id="total-count">40</b>pizzas</div><div><b id="total-likes">3.2k</b>likes</div></div>
+    <button class="btn-draw" onclick="openDrawMode()">+ Draw</button>
+  </div>
+</header>
+
+<div class="wall" id="wall"></div>
+
+<div class="draw-overlay" id="drawOverlay">
+  <div class="draw-header">
+    <button class="draw-back" onclick="closeDrawMode()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      Back
+    </button>
+    <div class="draw-title" id="drawTitle">Draw Your Pizza</div>
+    <button class="draw-save-btn" onclick="saveDrawing()">Save</button>
+  </div>
+  <div class="draw-stage">
+    <div class="draw-plate"><canvas id="drawCanvas" width="760" height="760"></canvas></div>
+  </div>
+  <div class="draw-toolbar">
+    <div id="colorSwatches"></div>
+    <div class="toolbar-divider"></div>
+    <div class="brush-size">brush <input type="range" id="brushSize" min="3" max="40" value="10"></div>
+    <div class="toolbar-divider"></div>
+    <button class="tool-btn" id="eraserBtn" onclick="toggleEraser()">Eraser</button>
+    <button class="tool-btn" onclick="clearCanvas()">Clear</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ========== 数据 ========== */
+const COLORS = ["#FF4D4D","#FFD93D","#4ECDC4","#95E1D3","#FF8C42","#9B59B6","#3498DB","#2D2926","#FFFFFF"];
+const NAMES = [
+  "双倍芝士炸弹","夏威夷阳光","超级至尊王","蔬菜总动员","培根卷边堡","榴莲飘香号",
+  "黑椒牛魔王","四季缤纷","玛格丽特之恋","海鲜大咖秀","爆浆芝心","经典意式",
+  "彩虹星球","喵星人特供","午夜纽约","田园牧歌","火焰山","极简白","水果狂欢节",
+  "黑松露盛宴","辣妹子","芝士瀑布","地中海之风","忍者神龟","小熊维尼","银河系",
+  "早餐披萨","抹茶慕斯","BBQ烟熏","墨西哥狂想","樱花物语","霓虹甜心","火山爆发",
+  "薄荷清凉","焦糖布丁","番茄狂想","蓝纹奶酪","外星人",
+];
+const AUTHORS = ["小明","Alice","PizzaLover","CheeseKing","TomatoFan","美食家","豆豆","阿橘","PizzaMaster","芝士控","面团诗人","烤箱巫师","PepperoniPete","MozzarellaMike","BasilBeth","DoughDave","NinjaTurtle","CatLady"];
+
+let pizzas = [], uid = 1;
+
+function mulberry32(a) {
+  return function() {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+function generatePizzaData(seed) {
+  const rng = mulberry32(seed);
+  return {
+    id: uid++, name: NAMES[seed % NAMES.length],
+    author: AUTHORS[seed % AUTHORS.length],
+    likes: Math.floor(rng() * 600 + 20),
+    time: Math.floor(rng() * 48) + 1 + "h ago",
+    seed: seed, liked: false,
+  };
+}
+
+for (let i = 0; i < 40; i++) pizzas.push(generatePizzaData(i + 42));
+
+/* ========== 散落布局引擎（加密 + 边缘裁切） ========== */
+const wall = document.getElementById("wall");
+
+function scatterLayout() {
+  wall.innerHTML = "";
+  const W = window.innerWidth;
+  const H = window.innerHeight - 64;
+  const baseSize = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--plate-base'));
+  const items = [];
+
+  pizzas.forEach((p, idx) => {
+    const rng = mulberry32(p.seed + 777);
+    const size = baseSize * (0.72 + rng() * 0.56);
+    const rot = (rng() - 0.5) * 42;
+    items.push({ p, size, rot, isNew: false, seed: p.seed + idx });
+  });
+
+  for (let i = 0; i < 4; i++) {
+    const rng = mulberry32(99999 + i);
+    const size = baseSize * 0.68;
+    const rot = (rng() - 0.5) * 32;
+    items.push({ p: null, size, rot, isNew: true, seed: 88888 + i });
+  }
+
+  // 更密的网格，制造自然交叠
+  const cols = Math.ceil(Math.sqrt(items.length * (W / H)) * 1.25);
+  const rows = Math.ceil(items.length / cols);
+  const cellW = W / cols;
+  const cellH = H / rows;
+
+  items.forEach((item, idx) => {
+    const rng = mulberry32(item.seed);
+    const col = idx % cols;
+    const row = Math.floor(idx / cols);
+
+    // 网格中心 + 大偏移，甚至允许靠近边缘
+    const centerX = cellW * (col + 0.5) + (rng() - 0.5) * cellW * 1.1;
+    const centerY = cellH * (row + 0.5) + (rng() - 0.5) * cellH * 1.1;
+
+    // 宽松边界，允许裁切
+    const margin = item.size * 0.35;
+    const x = Math.max(-margin, Math.min(W + margin, centerX));
+    const y = Math.max(-margin, Math.min(H + margin, centerY));
+
+    createPizzaItem(item, x, y, item.rot, item.size, idx);
+  });
+}
+
+function createPizzaItem(item, x, y, rot, size, idx) {
+  const el = document.createElement("div");
+  el.className = "pizza-item" + (item.isNew ? ' is-new' : '');
+  el.style.setProperty('--rot', rot + 'deg');
+  el.style.left = (x - size / 2) + 'px';
+  el.style.top = (y - size / 2) + 'px';
+  el.style.setProperty('--size', size + 'px');
+  el.style.zIndex = idx + 1;
+  el.style.animationDelay = (idx * 0.025) + 's';
+
+  if (item.isNew) {
+    el.onclick = () => openDrawMode();
+    const plate = document.createElement("div");
+    plate.className = "plate empty";
+    const nameTag = document.createElement("div");
+    nameTag.className = "name-tag";
+    nameTag.textContent = "Draw Yours";
+    el.appendChild(plate);
+    el.appendChild(nameTag);
+  } else {
+    const p = item.p;
+    el.onclick = (e) => { if (!e.target.closest(".like-btn")) openDrawMode(p); };
+
+    const likeBtn = document.createElement("div");
+    likeBtn.className = "like-btn" + (p.liked ? " liked" : "");
+    likeBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="${p.liked?'currentColor':'none'}" stroke="currentColor" stroke-width="2.5"><path d="M12 21s-7-4.6-9.3-8.4C1 9.5 2.7 6 6 6c1.9 0 3.2 1.1 4 2.3C10.8 7.1 12.1 6 14 6c3.3 0 5 3.5 3.3 6.6C19 16.4 12 21 12 21z"/></svg><span>${p.likes}</span>`;
+    likeBtn.onclick = (ev) => { ev.stopPropagation(); toggleLike(p, likeBtn); };
+
+    const plate = document.createElement("div");
+    plate.className = "plate";
+    const cv = document.createElement("canvas");
+    cv.width = 320; cv.height = 320;
+    drawPizzaOnCanvas(cv, p.seed);
+    plate.appendChild(cv);
+
+    const nameTag = document.createElement("div");
+    nameTag.className = "name-tag";
+    nameTag.textContent = p.name;
+
+    el.appendChild(likeBtn);
+    el.appendChild(plate);
+    el.appendChild(nameTag);
+  }
+
+  wall.appendChild(el);
+}
+
+/* ========== 披萨绘制：扁平矢量 + 硬阴影 + 可爱脸 ========== */
+function drawPizzaOnCanvas(cv, seed) {
+  const ctx = cv.getContext('2d');
+  const R = cv.width / 2, rng = mulberry32(seed);
+  const style = seed % 8;
+
+  // 鲜艳面团色池
+  const crustPool = ["#FFD93D","#FF8C42","#F7DC6F","#BB8FCE","#85C1E9","#FF6B6B","#4ECDC4","#95E1D3"];
+  const crust = crustPool[style % crustPool.length];
+  const sauce = "#FF4D4D";
+  const cheese = "#FFE66D";
+
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.save();
+
+  // 饼底（扁平大色块）
+  ctx.beginPath(); ctx.arc(R, R, R - 4, 0, Math.PI * 2); ctx.fillStyle = crust; ctx.fill();
+  // 芝士层
+  ctx.beginPath(); ctx.arc(R, R, R - 22, 0, Math.PI * 2); ctx.fillStyle = cheese; ctx.globalAlpha = 0.85; ctx.fill(); ctx.globalAlpha = 1;
+  // 酱料晕染
+  ctx.beginPath(); ctx.arc(R, R, R - 34, 0, Math.PI * 2); ctx.fillStyle = sauce; ctx.globalAlpha = 0.15; ctx.fill(); ctx.globalAlpha = 1;
+  // 裁剪到酱料区
+  ctx.beginPath(); ctx.arc(R, R, R - 26, 0, Math.PI * 2); ctx.clip();
+
+  const TOPPINGS = ["#FF4D4D","#4ECDC4","#95E1D3","#9B59B6","#3498DB","#FF8C42","#FFFFFF","#2D2926"];
+
+  switch(style) {
+    case 0: { // 意式经典：大片番茄 + 罗勒
+      for(let i=0;i<5;i++){const a=rng()*Math.PI*2,rr=rng()*(R-50);ctx.beginPath();ctx.arc(R+Math.cos(a)*rr,R+Math.sin(a)*rr,16+rng()*10,0,Math.PI*2);ctx.fillStyle='#FF4D4D';ctx.globalAlpha=.9;ctx.fill();}
+      for(let i=0;i<20;i++){const a=rng()*Math.PI*2,rr=rng()*(R-44);ctx.beginPath();ctx.ellipse(R+Math.cos(a)*rr,R+Math.sin(a)*rr,5+rng()*3,3+rng()*2,rng()*Math.PI,0,Math.PI*2);ctx.fillStyle='#2D2926';ctx.globalAlpha=.95;ctx.fill();}
+      break;
+    }
+    case 1: { // 腊肠派对：红色圆片 + 白点
+      const n=14+Math.floor(rng()*10);
+      for(let i=0;i<n;i++){const a=(i/n)*Math.PI*2+rng()*.5,rr=18+rng()*(R-58),pr=10+rng()*7;ctx.beginPath();ctx.arc(R+Math.cos(a)*rr,R+Math.sin(a)*rr,pr,0,Math.PI*2);ctx.fillStyle='#CC2222';ctx.globalAlpha=.95;ctx.fill();ctx.beginPath();ctx.arc(R+Math.cos(a)*rr-2,R+Math.sin(a)*rr-2,2,0,Math.PI*2);ctx.fillStyle='#fff';ctx.globalAlpha=.6;ctx.fill();}
+      break;
+    }
+    case 2: { // 蔬菜田园：绿圈 + 紫洋葱
+      for(let i=0;i<12;i++){const a=rng()*Math.PI*2,rr=rng()*(R-46);ctx.beginPath();ctx.arc(R+Math.cos(a)*rr,R+Math.sin(a)*rr,9+rng()*6,0,Math.PI*2);ctx.strokeStyle='#4ECDC4';ctx.lineWidth=4;ctx.globalAlpha=.9;ctx.stroke();}
+      for(let i=0;i<8;i++){const a=rng()*Math.PI*2,rr=rng()*(R-48);ctx.beginPath();ctx.ellipse(R+Math.cos(a)*rr,R+Math.sin(a)*rr,11+rng()*5,7+rng()*3,rng()*Math.PI,0,Math.PI*2);ctx.fillStyle='#9B59B6';ctx.globalAlpha=.8;ctx.fill();}
+      break;
+    }
+    case 3: { // 芝士瀑布：黄色块 + 绿点
+      ctx.globalAlpha=.2;ctx.fillStyle='#FF8C42';
+      for(let i=0;i<45;i++){const a=rng()*Math.PI*2,rr=rng()*(R-34);ctx.beginPath();ctx.arc(R+Math.cos(a)*rr,R+Math.sin(a)*rr,3+rng()*5,0,Math.PI*2);ctx.fill();}
+      for(let i=0;i<8;i++){const a=rng()*Math.PI*2,rr=rng()*(R-50);ctx.beginPath();ctx.arc(R+Math.cos(a)*rr,R+Math.sin(a)*rr,4+rng()*3,0,Math.PI*2);ctx.fillStyle='#4ECDC4';ctx.globalAlpha=.9;ctx.fill();}
+      break;
+    }
+    case 4: { // 海鲜盛宴：橙粉椭圆 + 红方块
+      for(let i=0;i<12;i++){const a=rng()*Math.PI*2,rr=24+rng()*(R-64),ang=rng()*Math.PI;ctx.save();ctx.translate(R+Math.cos(a)*rr,R+Math.sin(a)*rr);ctx.rotate(ang+a);ctx.beginPath();ctx.ellipse(0,0,13+rng()*5,7+rng()*3,0,0,Math.PI*2);ctx.fillStyle='#FF8C42';ctx.globalAlpha=.9;ctx.fill();ctx.restore();}
+      for(let i=0;i<16;i++){const a=rng()*Math.PI*2,rr=rng()*(R-42);ctx.beginPath();ctx.rect(R+Math.cos(a)*rr-4,R+Math.sin(a)*rr-2,8,4);ctx.fillStyle='#FF4D4D';ctx.globalAlpha=.65;ctx.fill();}
+      break;
+    }
+    case 5: { // 艺术彩虹：大色块泼洒
+      for(let i=0;i<18;i++){const a=rng()*Math.PI*2,rr=rng()*(R-42),sz=10+rng()*20;ctx.beginPath();ctx.arc(R+Math.cos(a)*rr,R+Math.sin(a)*rr,sz,0,Math.PI*2);ctx.fillStyle=TOPPINGS[Math.floor(rng()*TOPPINGS.length)];ctx.globalAlpha=.75+rng()*.25;ctx.fill();}
+      ctx.lineWidth=3;ctx.lineCap='round';
+      for(let i=0;i<10;i++){ctx.strokeStyle=TOPPINGS[i%TOPPINGS.length];ctx.globalAlpha=.5+rng()*.3;ctx.beginPath();let x=R+(rng()-0.5)*100,y=R+(rng()-0.5)*100;ctx.moveTo(x,y);for(let j=0;j<5;j++){x+=(rng()-0.5)*40;y+=(rng()-0.5)*40;ctx.lineTo(x,y);}ctx.stroke();}
+      break;
+    }
+    case 6: { // 黑暗料理：黑橄榄 + 红点缀
+      for(let i=0;i<20;i++){const a=rng()*Math.PI*2,rr=rng()*(R-44);ctx.beginPath();ctx.arc(R+Math.cos(a)*rr,R+Math.sin(a)*rr,6+rng()*5,0,Math.PI*2);ctx.fillStyle='#2D2926';ctx.globalAlpha=.9;ctx.fill();ctx.beginPath();ctx.arc(R+Math.cos(a)*rr,R+Math.sin(a)*rr,2+rng()*2,0,Math.PI*2);ctx.fillStyle='#4ECDC4';ctx.globalAlpha=.7;ctx.fill();}
+      for(let i=0;i<6;i++){const a=rng()*Math.PI*2,rr=rng()*(R-50);ctx.beginPath();ctx.arc(R+Math.cos(a)*rr,R+Math.sin(a)*rr,7+rng()*4,0,Math.PI*2);ctx.fillStyle='#FF4D4D';ctx.globalAlpha=.8;ctx.fill();}
+      break;
+    }
+    case 7: { // 水果甜披萨：草莓三角 + 蓝莓
+      for(let i=0;i<9;i++){const a=rng()*Math.PI*2,rr=22+rng()*(R-58),sx=R+Math.cos(a)*rr,sy=R+Math.sin(a)*rr;ctx.save();ctx.translate(sx,sy);ctx.rotate(a+rng());ctx.beginPath();ctx.moveTo(0,-11);ctx.lineTo(9,9);ctx.lineTo(-9,9);ctx.closePath();ctx.fillStyle='#FF4D8A';ctx.globalAlpha=.85;ctx.fill();ctx.restore();}
+      for(let i=0;i<16;i++){const a=rng()*Math.PI*2,rr=rng()*(R-46);ctx.beginPath();ctx.arc(R+Math.cos(a)*rr,R+Math.sin(a)*rr,4+rng()*3,0,Math.PI*2);ctx.fillStyle='#3498DB';ctx.globalAlpha=.85;ctx.fill();}
+      break;
+    }
+  }
+
+  // 50% 概率画一个可爱脸
+  if (rng() > 0.5) {
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = '#2D2926';
+    const eyeY = R - 8 + rng() * 16;
+    const eyeOffset = 12 + rng() * 8;
+    ctx.beginPath(); ctx.arc(R - eyeOffset, eyeY, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(R + eyeOffset, eyeY, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#2D2926';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    const mouthStyle = rng();
+    if (mouthStyle < 0.33) {
+      ctx.arc(R, eyeY + 10, 6, 0.2, Math.PI - 0.2);
+    } else if (mouthStyle < 0.66) {
+      ctx.moveTo(R - 5, eyeY + 10); ctx.lineTo(R + 5, eyeY + 10);
+    } else {
+      ctx.arc(R, eyeY + 16, 6, Math.PI + 0.2, -0.2);
+    }
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+/* ========== 点赞 ========== */
+function toggleLike(p, btn) {
+  p.liked = !p.liked;
+  if (p.liked) { p.likes++; btn.classList.add('liked'); btn.querySelector('svg').setAttribute('fill','currentColor'); spawnHearts(btn); }
+  else { p.likes=Math.max(0,p.likes-1); btn.classList.remove('liked'); btn.querySelector('svg').setAttribute('fill','none'); }
+  btn.querySelector('span').textContent = p.likes;
+  updateStats();
+}
+function spawnHearts(el) {
+  const r = el.getBoundingClientRect();
+  for(let i=0;i<3;i++){
+    const h=document.createElement('div');h.className='float-heart';
+    h.textContent=['\u2764\uFE0F','\uD83E\uDDE1','\uD83D\uDC97'][i];
+    h.style.left=(r.left+r.width/2+(Math.random()*40-20))+'px';h.style.top=r.top+'px';
+    h.style.animationDelay=(i*.08)+'s';document.body.appendChild(h);setTimeout(()=>h.remove(),1300);
+  }
+}
+function updateStats() {
+  document.getElementById('total-count').textContent=pizzas.length;
+  const likes=pizzas.reduce((s,p)=>s+p.likes,0);
+  document.getElementById('total-likes').textContent=likes>999?(likes/1000).toFixed(1)+'k':likes;
+}
+
+/* ========== 绘制模式 ========== */
+let curColor=COLORS[0],brushSize=10,erasing=false,isDrawing=false,lastPos=null,currentPizza=null;
+const drawOverlay=document.getElementById('drawOverlay'),drawCanvas=document.getElementById('drawCanvas'),drawCtx=drawCanvas.getContext('2d'),PLATE_R=drawCanvas.width/2;
+
+function initDrawPlate(){
+  drawCtx.clearRect(0,0,drawCanvas.width,drawCanvas.height);
+  drawCtx.beginPath();drawCtx.arc(PLATE_R,PLATE_R,PLATE_R-14,0,Math.PI*2);drawCtx.fillStyle='#FFD93D';drawCtx.fill();
+  drawCtx.beginPath();drawCtx.arc(PLATE_R,PLATE_R,PLATE_R-44,0,Math.PI*2);drawCtx.fillStyle='#FFE66D';drawCtx.globalAlpha=.85;drawCtx.fill();drawCtx.globalAlpha=1;
+  drawCtx.save();drawCtx.beginPath();drawCtx.arc(PLATE_R,PLATE_R,PLATE_R-48,0,Math.PI*2);drawCtx.clip();
+}
+function openDrawMode(pizza){currentPizza=pizza||null;document.getElementById('drawTitle').textContent=pizza?`Editing: ${p.name}`:'Draw Your Pizza';initDrawPlate();drawOverlay.classList.add('show');}
+function closeDrawMode(){drawOverlay.classList.remove('show');drawCtx.restore();}
+function saveDrawing(){
+  closeDrawMode();
+  if(!currentPizza){const newP=generatePizzaData(Date.now()%1000);newP.name='My Pizza #'+newP.id;newP.likes=0;pizzas.unshift(newP);scatterLayout();toast('Saved! Welcome to the wall.');}
+  else{toast(`"${currentPizza.name}" updated!`);}
+}
+
+function getCanvasPos(e){const r=drawCanvas.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width*drawCanvas.width,y:(e.clientY-r.top)/r.height*drawCanvas.height};}
+drawCanvas.addEventListener('pointerdown',e=>{isDrawing=true;lastPos=getCanvasPos(e);stroke(lastPos.x,lastPos.y,lastPos.x,lastPos.y);drawCanvas.setPointerCapture(e.pointerId);});
+drawCanvas.addEventListener('pointermove',e=>{if(!isDrawing)return;const pos=getCanvasPos(e);stroke(lastPos.x,lastPos.y,pos.x,pos.y);lastPos=pos;});
+const endDraw=()=>{isDrawing=false;lastPos=null;};
+drawCanvas.addEventListener('pointerup',endDraw);drawCanvas.addEventListener('pointercancel',endDraw);
+function stroke(x0,y0,x1,y1){drawCtx.lineCap='round';drawCtx.lineJoin='round';drawCtx.strokeStyle=erasing?'#FFE66D':curColor;drawCtx.lineWidth=erasing?brushSize*2.5:brushSize;drawCtx.beginPath();drawCtx.moveTo(x0,y0);drawCtx.lineTo(x1,y1);drawCtx.stroke();}
+
+const swatchContainer=document.getElementById('colorSwatches');
+COLORS.forEach((c,i)=>{const s=document.createElement('div');s.className='color-swatch'+(i===0?' active':'');s.style.background=c;s.onclick=()=>{curColor=c;erasing=false;document.getElementById('eraserBtn').classList.remove('active');document.querySelectorAll('.color-swatch').forEach(x=>x.classList.remove('active'));s.classList.add('active');};swatchContainer.appendChild(s);});
+document.getElementById('brushSize').oninput=e=>brushSize=+e.target.value;
+function toggleEraser(){erasing=!erasing;document.getElementById('eraserBtn').classList.toggle('active',erasing);if(erasing)document.querySelectorAll('.color-swatch').forEach(x=>x.classList.remove('active'));}
+function clearCanvas(){initDrawPlate();}
+
+let toastTimer;
+function toast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),2200);}
+
+/* ========== 启动 ========== */
+window.addEventListener('resize', () => scatterLayout());
+requestAnimationFrame(() => scatterLayout());
+</script>
+</body>
+</html>

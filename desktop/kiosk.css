@@ -1,0 +1,90 @@
+/* 触控大屏：禁选中 / 禁系统手势 / 加大可点区域 */
+* {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-tap-highlight-color: transparent;
+}
+html, body, canvas {
+  touch-action: none;
+}
+input, textarea {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  touch-action: manipulation;
+}
+
+/* 性能兜底：集显上 backdrop-filter / drop-shadow 是主要的合成开销。
+   注意选择器要跟 prototype.html 的真实类名对齐——
+   .palette / .minimap / .pizza-item 是旧版 v3 原型的类名，在当前原型里不存在。 */
+.rank,
+.rank-panel,
+.toolbar,
+.overlay,
+.modal,
+.toast {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* 数量不封顶或常驻可见的元素，一律不做滤镜投影 */
+.cell,
+.cell.filled,
+.cell.target,
+.cell.spotcell,
+.card canvas,
+.rlist .card canvas,
+.ghost-wrap canvas {
+  filter: none !important;
+}
+.cell.filled,
+.cell.target,
+.cell.spotcell {
+  animation: none !important;
+}
+
+/* 55" / 大屏：工具条更大更好摸 */
+@media (min-width: 1500px) {
+  .tbtn { min-height: 52px; padding: 12px 20px !important; font-size: 16px !important; }
+  .swatch { width: 48px !important; height: 48px !important; }
+  #brush { width: 120px !important; }
+}
+
+/* 管理条 */
+#pizza-kiosk-hotspot {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 72px;
+  height: 72px;
+  z-index: 2147483000;
+}
+#pizza-kiosk-bar {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 2147483001;
+  display: none;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  background: rgba(10, 20, 60, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+}
+#pizza-kiosk-bar.show { display: flex; }
+#pizza-kiosk-bar button {
+  appearance: none;
+  border: 0;
+  border-radius: 8px;
+  padding: 12px 18px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  background: #FF4D4D;
+  cursor: pointer;
+}
+#pizza-kiosk-bar button.ghost {
+  background: rgba(255, 255, 255, 0.12);
+}

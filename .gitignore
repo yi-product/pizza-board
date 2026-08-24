@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Electron build output (rebuild with npm run dist)
+desktop/dist/
+desktop/dist-release/
+desktop/dist/
+
+# Local / portable runtime data
+desktop/data/
+desktop/_repro-data/
+**/data/
+
+# Diagnostic / temp screenshots from local testing
+desktop/_*.png
+desktop/_*.js
+desktop/_*.pdf
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/

@@ -1,0 +1,60 @@
+{
+  "name": "pizza-board",
+  "version": "0.1.14",
+  "description": "披萨画板 · 55寸会议平板试玩版",
+  "author": "PizzaBoard",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --windowed",
+    "kiosk": "electron . --kiosk",
+    "pack": "electron-builder --win dir",
+    "dist": "electron-builder --win dir",
+    "postdist": "node scripts/copy-release-helpers.js"
+  },
+  "devDependencies": {
+    "electron": "^33.4.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.pizzaboard.app",
+    "productName": "PizzaBoard",
+    "copyright": "Copyright © 2026",
+    "directories": {
+      "output": "dist-release"
+    },
+    "electronDist": "node_modules/electron/dist",
+    "files": [
+      "main.js",
+      "preload.js",
+      "launcher.html",
+      "print.html",
+      "kiosk.css",
+      "kiosk-inject.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../",
+        "to": "protos",
+        "filter": [
+          "prototype.html",
+          "prototype-v2-gallery.html",
+          "prototype-v3-grid.html",
+          "prototype-v3-grid-receipt.html"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "PizzaBoard-${version}-${os}-${arch}.${ext}",
+      "signAndEditExecutable": false
+    },
+    "asar": true
+  }
+}

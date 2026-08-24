@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>披萨画板 · Pizza Grid</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet" />
+<style>
+  /* ==== Design System v5 · Blue Grid + Ordered Pizza Characters ====
+     核心：等展示机会 / 规整网格 / 更无机几何 / 色彩平衡
+  */
+  :root {
+    --bg:           #2E4DB5;
+    --bg-dark:      #1A2E6B;
+    --grid-line:    rgba(255,255,255,0.10);
+    --grid-dot:     rgba(255,255,255,0.18);
+    --text:         #FFFFFF;
+    --text-muted:   rgba(255,255,255,0.58);
+    --accent:       #FF4D4D;
+    --accent-dark:  #CC2222;
+    --cell:         rgba(255,255,255,0.03);
+    --font-display: "Inter", "Noto Sans SC", system-ui, sans-serif;
+    --font-body:    "Inter", "Noto Sans SC", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; width: 100%;
+    font-family: var(--font-body);
+    color: var(--text);
+    background: var(--bg);
+    overflow: hidden;
+  }
+
+  /* 几何网格背景 */
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 80px 80px;
+    pointer-events: none;
+    z-index: 0;
+  }
+  body::after {
+    content: "";
+    position: fixed; inset: 0;
+    background-image:
+      radial-gradient(circle, var(--grid-dot) 2px, transparent 2px);
+    background-size: 80px 80px;
+    background-position: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ==== Header ==== */
+  .header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 28px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--grid-line);
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    font-family: var(--font-display);
+    font-size: 18px; font-weight: 800;
+    color: var(--text); letter-spacing: -0.4px;
+  }
+  .brand-icon { width: 30px; height: 30px; }
+  .header-right {
+    display: flex; align-items: center; gap: 18px;
+  }
+  .stats {
+    display: flex; align-items: baseline; gap: 22px;
+    font-family: var(--font-display);
+    font-size: 13px; font-weight: 600;
+    color: var(--text-muted);
+  }
+  .stats b { color: var(--text); font-weight: 800; margin-right: 3px; }
+  .btn-draw {
+    font-family: var(--font-display);
+    font-size: 13px; font-weight: 700;
+    padding: 10px 20px;
+    border: none; border-radius: 2px;
+    background: var(--accent); color: #fff;
+    cursor: pointer;
+    box-shadow: 4px 4px 0 var(--accent-dark);
+    transition: transform .1s, box-shadow .1s;
+    letter-spacing: 0.2px;
+  }
+  .btn-draw:hover { transform: translate(-1px, -1px); box-shadow: 5px 5px 0 var(--accent-dark); }
+  .btn-draw:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--accent-dark); }
+
+  /* ==== 墙面：网格 ==== */
+  .wall {
+    position: fixed; inset: 0;
+    top: 65px;
+    overflow: hidden;
+    z-index: 1;
+  }
+
+  /* ==== 单个披萨项 ==== */
+  .pizza-item {
+    position: absolute;
+    cursor: pointer;
+    transition: transform .22s cubic-bezier(.34,1.56,.64,1), z-index 0s;
+    will-change: transform;
+    filter: drop-shadow(6px 6px 0 rgba(15, 28, 78, 0.5));
+  }
+  .pizza-item:hover {
+    z-index: 80 !important;
+    transform: scale(1.08) rotate(var(--rot)) !important;
+    filter: drop-shadow(10px 10px 0 rgba(15, 28, 78, 0.65));
+  }
+  .pizza-item:active { transition-duration: .1s; transform: scale(1.02) rotate(var(--rot)) !important; }
+
+  @keyframes grid-in {
+    from { opacity: 0; transform: scale(.7) rotate(var(--rot)); }
+    to   { opacity: 1; transform: scale(1) rotate(var(--rot)); }
+  }
+  .pizza-item { animation: grid-in .35s cubic-bezier(.34,1.56,.64,1) backwards; }
+
+  .cell-frame {
+    position: absolute;
+    inset: 8px;
+    border: 1px solid var(--grid-line);
+    border-radius: 2px;
+    background: var(--cell);
+    opacity: 0;
+    transition: opacity .2s;
+    pointer-events: none;
+  }
+  .pizza-item:hover .cell-frame { opacity: 1; }
+
+  .plate {
+    width: var(--size, 140px);
+    height: var(--size, 140px);
+    border-radius: 50%;
+    background: #FFD93D;
+    position: relative;
+    overflow: hidden;
+  }
+  .plate canvas { width: 100%; height: 100%; border-radius: 50%; }
+
+  .plate.empty {
+    background: transparent;
+    border: 2px dashed var(--grid-dot);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .plate.empty::after {
+    content: "+";
+    font-family: var(--font-display);
+    font-size: 34px; font-weight: 800;
+    color: var(--grid-dot);
+  }
+
+  .name-tag {
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%) rotate(calc(-1 * var(--rot))) scale(0.9);
+    background: var(--bg-dark);
+    padding: 4px 10px;
+    border-radius: 2px;
+    font-family: var(--font-display);
+    font-size: 10px; font-weight: 700;
+    color: #fff;
+    white-space: nowrap;
+    max-width: 130px;
+    overflow: hidden; text-overflow: ellipsis;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s, transform .2s;
+  }
+  .pizza-item:hover .name-tag { opacity: 1; transform: translateX(-50%) rotate(calc(-1 * var(--rot))) scale(1); }
+
+  .like-btn {
+    position: absolute;
+    top: 0; right: 0;
+    display: flex; align-items: center; gap: 2px;
+    background: #fff;
+    border-radius: 2px;
+    padding: 3px 6px;
+    font-family: var(--font-display);
+    font-size: 9px; font-weight: 800;
+    color: var(--bg-dark);
+    cursor: pointer;
+    z-index: 3;
+    transition: all .12s;
+    box-shadow: 2px 2px 0 rgba(15,28,78,0.4);
+  }
+  .like-btn:hover { transform: scale(1.1); background: var(--accent); color: #fff; }
+  .like-btn:active { transform: scale(.95); }
+  .like-btn.liked { background: var(--accent); color: #fff; }
+  .like-btn svg { width: 9px; height: 9px; flex-shrink: 0; }
+
+  .pizza-item.is-new { filter: drop-shadow(4px 4px 0 rgba(15,28,78,0.35)); }
+  .pizza-item.is-new .plate.empty { border-color: var(--grid-dot); }
+
+  /* ==== 绘制 Overlay ==== */
+  .draw-overlay {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    z-index: 200;
+    display: none; flex-direction: column;
+    opacity: 0; transition: opacity .3s;
+  }
+  .draw-overlay.show { display: flex; opacity: 1; }
+
+  .draw-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 28px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--grid-line);
+  }
+  .draw-back {
+    display: flex; align-items: center; gap: 6px;
+    font-family: var(--font-display);
+    font-size: 14px; font-weight: 600;
+    color: var(--text-muted);
+    background: none; border: none;
+    cursor: pointer; padding: 8px 14px;
+    border-radius: 2px; transition: background .12s, color .12s;
+  }
+  .draw-back:hover { background: rgba(255,255,255,0.08); color: #fff; }
+  .draw-title {
+    font-family: var(--font-display);
+    font-size: 16px; font-weight: 800;
+  }
+  .draw-save-btn {
+    font-family: var(--font-display);
+    font-size: 13px; font-weight: 700;
+    padding: 10px 22px;
+    border: none; border-radius: 2px;
+    background: var(--accent); color: #fff;
+    cursor: pointer; transition: transform .12s;
+    box-shadow: 4px 4px 0 var(--accent-dark);
+  }
+  .draw-save-btn:hover { transform: translate(-1px, -1px); box-shadow: 5px 5px 0 var(--accent-dark); }
+  .draw-save-btn:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--accent-dark); }
+
+  .draw-stage {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    padding: 24px; overflow: hidden;
+  }
+  .draw-plate {
+    width: 380px; height: 380px;
+    border-radius: 50%;
+    background: #FFD93D;
+    box-shadow: 12px 12px 0 rgba(15,28,78,0.5);
+    position: relative; overflow: hidden;
+  }
+  .draw-plate canvas { width: 100%; height: 100%; border-radius: 50%; touch-action: none; }
+
+  .draw-toolbar {
+    position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 10px;
+    background: var(--bg-dark);
+    border-radius: 2px;
+    padding: 10px 16px;
+    box-shadow: 6px 6px 0 rgba(10,20,60,0.6);
+  }
+  .color-swatch {
+    width: 26px; height: 26px; border-radius: 2px;
+    border: 2px solid transparent; cursor: pointer;
+    transition: transform .12s, border-color .12s;
+    box-shadow: 2px 2px 0 rgba(0,0,0,0.25);
+  }
+  .color-swatch:hover { transform: scale(1.12); }
+  .color-swatch.active { border-color: #fff; transform: scale(1.15); }
+  .toolbar-divider { width: 1px; height: 24px; background: rgba(255,255,255,0.15); }
+  .tool-btn {
+    font-family: var(--font-display); font-size: 12px; font-weight: 700;
+    padding: 7px 13px; border: 1.5px solid rgba(255,255,255,0.25);
+    border-radius: 2px; background: transparent; color: #fff;
+    cursor: pointer; transition: all .1s;
+  }
+  .tool-btn:hover { border-color: #fff; }
+  .tool-btn.active { background: #fff; color: var(--bg-dark); border-color: #fff; }
+  .brush-size {
+    display: flex; align-items: center; gap: 6px;
+    font-family: var(--font-display); font-size: 11px; font-weight: 600;
+    color: var(--text-muted);
+  }
+  .brush-size input { width: 70px; accent-color: var(--accent); }
+
+  .float-heart {
+    position: fixed; pointer-events: none; z-index: 300;
+    font-size: 22px;
+    animation: heart-float 1.2s ease-out forwards;
+  }
+  @keyframes heart-float {
+    0%   { opacity: 1; transform: translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateY(-110px) scale(1.6) rotate(18deg); }
+  }
+
+  .toast {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+    background: #fff; color: var(--bg-dark);
+    font-family: var(--font-display);
+    font-size: 13px; font-weight: 700;
+    padding: 10px 20px; border-radius: 2px;
+    z-index: 400; opacity: 0; transition: opacity .3s;
+    pointer-events: none;
+    box-shadow: 4px 4px 0 rgba(15,28,78,0.35);
+  }
+  .toast.show { opacity: 1; }
+
+  @media (max-width: 768px) {
+    .header { padding: 12px 16px; }
+    .brand { font-size: 16px; } .brand-icon { width: 26px; height: 26px; }
+    .stats { display: none; }
+    .btn-draw { font-size: 12px; padding: 8px 14px; }
+    .wall { top: 57px; }
+    .draw-plate { width: 290px; height: 290px; }
+    .draw-toolbar { padding: 8px 12px; gap: 6px; flex-wrap: wrap; max-width: 92%; }
+  }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="brand">
+    <svg class="brand-icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="4" y="4" width="32" height="32" rx="2" fill="#FFD93D"/>
+      <circle cx="20" cy="20" r="10" fill="#FF6B6B" opacity=".25"/>
+      <circle cx="16" cy="18" r="2" fill="#4ECDC4"/>
+      <circle cx="24" cy="22" r="1.5" fill="#95E1D3"/>
+      <circle cx="22" cy="16" r="1" fill="#2D2926"/>
+      <circle cx="18" cy="24" r="1.5" fill="#FF8C42"/>
+    </svg>
+    <span>Pizza Grid</span>
+  </div>
+  <div class="header-right">
+    <div class="stats"><div><b id="total-count">40</b>pizzas</div><div><b id="total-likes">3.2k</b>likes</div></div>
+    <button class="btn-draw" onclick="openDrawMode()">+ Draw</button>
+  </div>
+</header>
+
+<div class="wall" id="wall"></div>
+
+<div class="draw-overlay" id="drawOverlay">
+  <div class="draw-header">
+    <button class="draw-back" onclick="closeDrawMode()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      Back
+    </button>
+    <div class="draw-title" id="drawTitle">Draw Your Pizza</div>
+    <button class="draw-save-btn" onclick="saveDrawing()">Save</button>
+  </div>
+  <div class="draw-stage">
+    <div class="draw-plate"><canvas id="drawCanvas" width="760" height="760"></canvas></div>
+  </div>
+  <div class="draw-toolbar">
+    <div id="colorSwatches"></div>
+    <div class="toolbar-divider"></div>
+    <div class="brush-size">brush <input type="range" id="brushSize" min="3" max="40" value="10"></div>
+    <div class="toolbar-divider"></div>
+    <button class="tool-btn" id="eraserBtn" onclick="toggleEraser()">Eraser</button>
+    <button class="tool-btn" onclick="clearCanvas()">Clear</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ========== 数据 ========== */
+const COLORS = ["#FF4D4D","#FFD93D","#4ECDC4","#95E1D3","#FF8C42","#9B59B6","#3498DB","#2D2926","#FFFFFF"];
+const NAMES = [
+  "双倍芝士炸弹","夏威夷阳光","超级至尊王","蔬菜总动员","培根卷边堡","榴莲飘香号",
+  "黑椒牛魔王","四季缤纷","玛格丽特之恋","海鲜大咖秀","爆浆芝心","经典意式",
+  "彩虹星球","喵星人特供","午夜纽约","田园牧歌","火焰山","极简白","水果狂欢节",
+  "黑松露盛宴","辣妹子","芝士瀑布","地中海之风","忍者神龟","小熊维尼","银河系",
+  "早餐披萨","抹茶慕斯","BBQ烟熏","墨西哥狂想","樱花物语","霓虹甜心","火山爆发",
+  "薄荷清凉","焦糖布丁","番茄狂想","蓝纹奶酪","外星人",
+];
+const AUTHORS = ["小明","Alice","PizzaLover","CheeseKing","TomatoFan","美食家","豆豆","阿橘","PizzaMaster","芝士控","面团诗人","烤箱巫师","PepperoniPete","MozzarellaMike","BasilBeth","DoughDave","NinjaTurtle","CatLady"];
+
+let pizzas = [], uid = 1;
+
+function mulberry32(a) {
+  return function() {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+function generatePizzaData(seed) {
+  const rng = mulberry32(seed);
+  return {
+    id: uid++, name: NAMES[seed % NAMES.length],
+    author: AUTHORS[seed % AUTHORS.length],
+    likes: Math.floor(rng() * 600 + 20),
+    time: Math.floor(rng() * 48) + 1 + "h ago",
+    seed: seed, liked: false,
+  };
+}
+
+for (let i = 0; i < 40; i++) pizzas.push(generatePizzaData(i + 42));
+
+// 色彩平衡重排：让相邻披萨的 base 色尽量不同
+function colorBalancePizzas() {
+  const colorCount = 8;
+  const getColorIdx = (p) => p.seed % colorCount;
+  // 简单贪心：按列优先扫描，每次选与上/左不同的颜色
+  const cols = Math.ceil(Math.sqrt(pizzas.length * (window.innerWidth / (window.innerHeight - 64))));
+  const ordered = [];
+  const pool = [...pizzas];
+  for (let i = 0; i < pizzas.length; i++) {
+    const row = Math.floor(i / cols);
+    const col = i % cols;
+    const up = row > 0 ? getColorIdx(ordered[i - cols]) : -1;
+    const left = col > 0 ? getColorIdx(ordered[i - 1]) : -1;
+    // 找与 up/left 都不同的披萨；没有则随便取
+    let pickIdx = pool.findIndex(p => getColorIdx(p) !== up && getColorIdx(p) !== left);
+    if (pickIdx === -1) pickIdx = 0;
+    ordered.push(pool.splice(pickIdx, 1)[0]);
+  }
+  pizzas = ordered;
+}
+colorBalancePizzas();
+
+/* ========== 规整网格布局 ========== */
+const wall = document.getElementById("wall");
+const NEW_SLOTS = 4;
+
+function gridLayout() {
+  wall.innerHTML = "";
+  const W = window.innerWidth;
+  const H = window.innerHeight - 65;
+  const total = pizzas.length + NEW_SLOTS;
+
+  // 目标单元格大小，保证等展示机会
+  const targetCell = 172;
+  const cols = Math.max(3, Math.min(10, Math.floor(W / targetCell)));
+  const rows = Math.ceil(total / cols);
+  const cellW = W / cols;
+  const cellH = H / rows;
+  const size = Math.min(cellW, cellH) * 0.72;
+
+  const items = pizzas.map((p, idx) => ({ p, isNew: false, idx }));
+  for (let i = 0; i < NEW_SLOTS; i++) items.push({ p: null, isNew: true, idx: pizzas.length + i });
+
+  items.forEach((item, idx) => {
+    const col = idx % cols;
+    const row = Math.floor(idx / cols);
+    const x = cellW * (col + 0.5);
+    const y = cellH * (row + 0.5);
+    // 统一小角度旋转，交替方向，保持秩序中带一点活泼
+    const rot = (idx % 2 === 0 ? 1 : -1) * (3 + (idx % 3) * 1.5);
+    createPizzaItem(item, x, y, rot, size, idx);
+  });
+}
+
+function createPizzaItem(item, x, y, rot, size, idx) {
+  const el = document.createElement("div");
+  el.className = "pizza-item" + (item.isNew ? ' is-new' : '');
+  el.style.setProperty('--rot', rot + 'deg');
+  el.style.left = (x - size / 2) + 'px';
+  el.style.top = (y - size / 2) + 'px';
+  el.style.setProperty('--size', size + 'px');
+  el.style.zIndex = idx + 1;
+  el.style.animationDelay = (idx * 0.02) + 's';
+
+  const frame = document.createElement("div");
+  frame.className = "cell-frame";
+  el.appendChild(frame);
+
+  if (item.isNew) {
+    el.onclick = () => openDrawMode();
+    const plate = document.createElement("div");
+    plate.className = "plate empty";
+    const nameTag = document.createElement("div");
+    nameTag.className = "name-tag";
+    nameTag.textContent = "Draw Yours";
+    el.appendChild(plate);
+    el.appendChild(nameTag);
+  } else {
+    const p = item.p;
+    el.onclick = (e) => { if (!e.target.closest(".like-btn")) openDrawMode(p); };
+
+    const likeBtn = document.createElement("div");
+    likeBtn.className = "like-btn" + (p.liked ? " liked" : "");
+    likeBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="${p.liked?'currentColor':'none'}" stroke="currentColor" stroke-width="2.5"><path d="M12 21s-7-4.6-9.3-8.4C1 9.5 2.7 6 6 6c1.9 0 3.2 1.1 4 2.3C10.8 7.1 12.1 6 14 6c3.3 0 5 3.5 3.3 6.6C19 16.4 12 21 12 21z"/></svg><span>${p.likes}</span>`;
+    likeBtn.onclick = (ev) => { ev.stopPropagation(); toggleLike(p, likeBtn); };
+
+    const plate = document.createElement("div");
+    plate.className = "plate";
+    const cv = document.createElement("canvas");
+    cv.width = 320; cv.height = 320;
+    drawPizzaOnCanvas(cv, p.seed);
+    plate.appendChild(cv);
+
+    const nameTag = document.createElement("div");
+    nameTag.className = "name-tag";
+    nameTag.textContent = p.name;
+
+    el.appendChild(likeBtn);
+    el.appendChild(plate);
+    el.appendChild(nameTag);
+  }
+
+  wall.appendChild(el);
+}
+
+/* ========== 披萨绘制：扁平矢量 + 可爱脸 ========== */
+function drawPizzaOnCanvas(cv, seed) {
+  const ctx = cv.getContext('2d');
+  const R = cv.width / 2, rng = mulberry32(seed);
+  const style = seed % 8;
+
+  const crustPool = ["#FFD93D","#FF8C42","#F7DC6F","#BB8FCE","#85C1E9","#FF6B6B","#4ECDC4","#95E1D3"];
+  const crust = crustPool[style % crustPool.length];
+  const sauce = "#FF4D4D";
+  const cheese = "#FFE66D";
+
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.save();
+
+  ctx.beginPath(); ctx.arc(R, R, R - 4, 0, Math.PI * 2); ctx.fillStyle = crust; ctx.fill();
+  ctx.beginPath(); ctx.arc(R, R, R - 22, 0, Math.PI * 2); ctx.fillStyle = cheese; ctx.globalAlpha = 0.85; ctx.fill(); ctx.globalAlpha = 1;
+  ctx.beginPath(); ctx.arc(R, R, R - 34, 0, Math.PI * 2); ctx.fillStyle = sauce; ctx.globalAlpha = 0.15; ctx.fill(); ctx.globalAlpha = 1;
+  ctx.beginPath(); ctx.arc(R, R, R - 26, 0, Math.PI * 2); ctx.clip();
+
+  const TOPPINGS = ["#FF4D4D","#4ECDC4","#95E1D3","#9B59B6","#3498DB","#FF8C42","#FFFFFF","#2D2926"];
+
+  switch(style) {
+    case 0: {
+      for(let i=0;i<5;i++){const a=rng()*Math.PI*2,rr=rng()*(R-50);ctx.beginPath();ctx.arc(R+Math.cos(a)*rr,R+Math.sin(a)*rr,16+rng()*10,0,Math.PI*2);ctx.fillStyle='#FF4D4D';ctx.globalAlpha=.9;ctx.fill();}
+      for(let i=0;i<20;i++){const a=rng()*Math.PI*2,rr=rng()*(R-44);ctx.beginPath();ctx.ellipse(R+Math.cos(a)*rr,R+Math.sin(a)*rr,5+rng()*3,3+rng()*2,rng()*Math.PI,0,Math.PI*2);ctx.fillStyle='#2D2926';ctx.globalAlpha=.95;ctx.fill();}
+      break;
+    }
+    case 1: {
+      const n=14+Math.floor(rng()*10);
+      for(let i=0;i<n;i++){const a=(i/n)*Math.PI*2+rng()*.5,rr=18+rng()*(R-58),pr=10+rng()*7;ctx.beginPath();ctx.arc(R+Math.cos(a)*rr,R+Math.sin(a)*rr,pr,0,Math.PI*2);ctx.fillStyle='#CC2222';ctx.globalAlpha=.95;ctx.fill();ctx.beginPath();ctx.arc(R+Math.cos(a)*rr-2,R+Math.sin(a)*rr-2,2,0,Math.PI*2);ctx.fillStyle='#fff';ctx.globalAlpha=.6;ctx.fill();}
+      break;
+    }
+    case 2: {
+      for(let i=0;i<12;i++){const a=rng()*Math.PI*2,rr=rng()*(R-46);ctx.beginPath();ctx.arc(R+Math.cos(a)*rr,R+Math.sin(a)*rr,9+rng()*6,0,Math.PI*2);ctx.strokeStyle='#4ECDC4';ctx.lineWidth=4;ctx.globalAlpha=.9;ctx.stroke();}
+      for(let i=0;i<8;i++){const a=rng()*Math.PI*2,rr=rng()*(R-48);ctx.beginPath();ctx.ellipse(R+Math.cos(a)*rr,R+Math.sin(a)*rr,11+rng()*5,7+rng()*3,rng()*Math.PI,0,Math.PI*2);ctx.fillStyle='#9B59B6';ctx.globalAlpha=.8;ctx.fill();}
+      break;
+    }
+    case 3: {
+      ctx.globalAlpha=.2;ctx.fillStyle='#FF8C42';
+      for(let i=0;i<45;i++){const a=rng()*Math.PI*2,rr=rng()*(R-34);ctx.beginPath();ctx.arc(R+Math.cos(a)*rr,R+Math.sin(a)*rr,3+rng()*5,0,Math.PI*2);ctx.fill();}
+      for(let i=0;i<8;i++){const a=rng()*Math.PI*2,rr=rng()*(R-50);ctx.beginPath();ctx.arc(R+Math.cos(a)*rr,R+Math.sin(a)*rr,4+rng()*3,0,Math.PI*2);ctx.fillStyle='#4ECDC4';ctx.globalAlpha=.9;ctx.fill();}
+      break;
+    }
+    case 4: {
+      for(let i=0;i<12;i++){const a=rng()*Math.PI*2,rr=24+rng()*(R-64),ang=rng()*Math.PI;ctx.save();ctx.translate(R+Math.cos(a)*rr,R+Math.sin(a)*rr);ctx.rotate(ang+a);ctx.beginPath();ctx.ellipse(0,0,13+rng()*5,7+rng()*3,0,0,Math.PI*2);ctx.fillStyle='#FF8C42';ctx.globalAlpha=.9;ctx.fill();ctx.restore();}
+      for(let i=0;i<16;i++){const a=rng()*Math.PI*2,rr=rng()*(R-42);ctx.beginPath();ctx.rect(R+Math.cos(a)*rr-4,R+Math.sin(a)*rr-2,8,4);ctx.fillStyle='#FF4D4D';ctx.globalAlpha=.65;ctx.fill();}
+      break;
+    }
+    case 5: {
+      for(let i=0;i<18;i++){const a=rng()*Math.PI*2,rr=rng()*(R-42),sz=10+rng()*20;ctx.beginPath();ctx.arc(R+Math.cos(a)*rr,R+Math.sin(a)*rr,sz,0,Math.PI*2);ctx.fillStyle=TOPPINGS[Math.floor(rng()*TOPPINGS.length)];ctx.globalAlpha=.75+rng()*.25;ctx.fill();}
+      ctx.lineWidth=3;ctx.lineCap='round';
+      for(let i=0;i<10;i++){ctx.strokeStyle=TOPPINGS[i%TOPPINGS.length];ctx.globalAlpha=.5+rng()*.3;ctx.beginPath();let x=R+(rng()-0.5)*100,y=R+(rng()-0.5)*100;ctx.moveTo(x,y);for(let j=0;j<5;j++){x+=(rng()-0.5)*40;y+=(rng()-0.5)*40;ctx.lineTo(x,y);}ctx.stroke();}
+      break;
+    }
+    case 6: {
+      for(let i=0;i<20;i++){const a=rng()*Math.PI*2,rr=rng()*(R-44);ctx.beginPath();ctx.arc(R+Math.cos(a)*rr,R+Math.sin(a)*rr,6+rng()*5,0,Math.PI*2);ctx.fillStyle='#2D2926';ctx.globalAlpha=.9;ctx.fill();ctx.beginPath();ctx.arc(R+Math.cos(a)*rr,R+Math.sin(a)*rr,2+rng()*2,0,Math.PI*2);ctx.fillStyle='#4ECDC4';ctx.globalAlpha=.7;ctx.fill();}
+      for(let i=0;i<6;i++){const a=rng()*Math.PI*2,rr=rng()*(R-50);ctx.beginPath();ctx.arc(R+Math.cos(a)*rr,R+Math.sin(a)*rr,7+rng()*4,0,Math.PI*2);ctx.fillStyle='#FF4D4D';ctx.globalAlpha=.8;ctx.fill();}
+      break;
+    }
+    case 7: {
+      for(let i=0;i<9;i++){const a=rng()*Math.PI*2,rr=22+rng()*(R-58),sx=R+Math.cos(a)*rr,sy=R+Math.sin(a)*rr;ctx.save();ctx.translate(sx,sy);ctx.rotate(a+rng());ctx.beginPath();ctx.moveTo(0,-11);ctx.lineTo(9,9);ctx.lineTo(-9,9);ctx.closePath();ctx.fillStyle='#FF4D8A';ctx.globalAlpha=.85;ctx.fill();ctx.restore();}
+      for(let i=0;i<16;i++){const a=rng()*Math.PI*2,rr=rng()*(R-46);ctx.beginPath();ctx.arc(R+Math.cos(a)*rr,R+Math.sin(a)*rr,4+rng()*3,0,Math.PI*2);ctx.fillStyle='#3498DB';ctx.globalAlpha=.85;ctx.fill();}
+      break;
+    }
+  }
+
+  if (rng() > 0.45) {
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = '#2D2926';
+    const eyeY = R - 6 + rng() * 12;
+    const eyeOffset = 11 + rng() * 6;
+    ctx.beginPath(); ctx.arc(R - eyeOffset, eyeY, 3.2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(R + eyeOffset, eyeY, 3.2, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#2D2926';
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    const mouthStyle = rng();
+    if (mouthStyle < 0.33) {
+      ctx.arc(R, eyeY + 9, 5, 0.2, Math.PI - 0.2);
+    } else if (mouthStyle < 0.66) {
+      ctx.moveTo(R - 4, eyeY + 9); ctx.lineTo(R + 4, eyeY + 9);
+    } else {
+      ctx.arc(R, eyeY + 14, 5, Math.PI + 0.2, -0.2);
+    }
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+/* ========== 点赞 ========== */
+function toggleLike(p, btn) {
+  p.liked = !p.liked;
+  if (p.liked) { p.likes++; btn.classList.add('liked'); btn.querySelector('svg').setAttribute('fill','currentColor'); spawnHearts(btn); }
+  else { p.likes=Math.max(0,p.likes-1); btn.classList.remove('liked'); btn.querySelector('svg').setAttribute('fill','none'); }
+  btn.querySelector('span').textContent = p.likes;
+  updateStats();
+}
+function spawnHearts(el) {
+  const r = el.getBoundingClientRect();
+  for(let i=0;i<3;i++){
+    const h=document.createElement('div');h.className='float-heart';
+    h.textContent=['\u2764\uFE0F','\uD83E\uDDE1','\uD83D\uDC97'][i];
+    h.style.left=(r.left+r.width/2+(Math.random()*40-20))+'px';h.style.top=r.top+'px';
+    h.style.animationDelay=(i*.08)+'s';document.body.appendChild(h);setTimeout(()=>h.remove(),1300);
+  }
+}
+function updateStats() {
+  document.getElementById('total-count').textContent=pizzas.length;
+  const likes=pizzas.reduce((s,p)=>s+p.likes,0);
+  document.getElementById('total-likes').textContent=likes>999?(likes/1000).toFixed(1)+'k':likes;
+}
+
+/* ========== 绘制模式 ========== */
+let curColor=COLORS[0],brushSize=10,erasing=false,isDrawing=false,lastPos=null,currentPizza=null;
+const drawOverlay=document.getElementById('drawOverlay'),drawCanvas=document.getElementById('drawCanvas'),drawCtx=drawCanvas.getContext('2d'),PLATE_R=drawCanvas.width/2;
+
+function initDrawPlate(){
+  drawCtx.clearRect(0,0,drawCanvas.width,drawCanvas.height);
+  drawCtx.beginPath();drawCtx.arc(PLATE_R,PLATE_R,PLATE_R-14,0,Math.PI*2);drawCtx.fillStyle='#FFD93D';drawCtx.fill();
+  drawCtx.beginPath();drawCtx.arc(PLATE_R,PLATE_R,PLATE_R-44,0,Math.PI*2);drawCtx.fillStyle='#FFE66D';drawCtx.globalAlpha=.85;drawCtx.fill();drawCtx.globalAlpha=1;
+  drawCtx.save();drawCtx.beginPath();drawCtx.arc(PLATE_R,PLATE_R,PLATE_R-48,0,Math.PI*2);drawCtx.clip();
+}
+function openDrawMode(pizza){currentPizza=pizza||null;document.getElementById('drawTitle').textContent=pizza?`Editing: ${p.name}`:'Draw Your Pizza';initDrawPlate();drawOverlay.classList.add('show');}
+function closeDrawMode(){drawOverlay.classList.remove('show');drawCtx.restore();}
+function saveDrawing(){
+  closeDrawMode();
+  if(!currentPizza){const newP=generatePizzaData(Date.now()%1000);newP.name='My Pizza #'+newP.id;newP.likes=0;pizzas.unshift(newP);colorBalancePizzas();gridLayout();toast('Saved! Welcome to the grid.');}
+  else{toast(`"${currentPizza.name}" updated!`);}
+}
+
+function getCanvasPos(e){const r=drawCanvas.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width*drawCanvas.width,y:(e.clientY-r.top)/r.height*drawCanvas.height};}
+drawCanvas.addEventListener('pointerdown',e=>{isDrawing=true;lastPos=getCanvasPos(e);stroke(lastPos.x,lastPos.y,lastPos.x,lastPos.y);drawCanvas.setPointerCapture(e.pointerId);});
+drawCanvas.addEventListener('pointermove',e=>{if(!isDrawing)return;const pos=getCanvasPos(e);stroke(lastPos.x,lastPos.y,pos.x,pos.y);lastPos=pos;});
+const endDraw=()=>{isDrawing=false;lastPos=null;};
+drawCanvas.addEventListener('pointerup',endDraw);drawCanvas.addEventListener('pointercancel',endDraw);
+function stroke(x0,y0,x1,y1){drawCtx.lineCap='round';drawCtx.lineJoin='round';drawCtx.strokeStyle=erasing?'#FFE66D':curColor;drawCtx.lineWidth=erasing?brushSize*2.5:brushSize;drawCtx.beginPath();drawCtx.moveTo(x0,y0);drawCtx.lineTo(x1,y1);drawCtx.stroke();}
+
+const swatchContainer=document.getElementById('colorSwatches');
+COLORS.forEach((c,i)=>{const s=document.createElement('div');s.className='color-swatch'+(i===0?' active':'');s.style.background=c;s.onclick=()=>{curColor=c;erasing=false;document.getElementById('eraserBtn').classList.remove('active');document.querySelectorAll('.color-swatch').forEach(x=>x.classList.remove('active'));s.classList.add('active');};swatchContainer.appendChild(s);});
+document.getElementById('brushSize').oninput=e=>brushSize=+e.target.value;
+function toggleEraser(){erasing=!erasing;document.getElementById('eraserBtn').classList.toggle('active',erasing);if(erasing)document.querySelectorAll('.color-swatch').forEach(x=>x.classList.remove('active'));}
+function clearCanvas(){initDrawPlate();}
+
+let toastTimer;
+function toast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),2200);}
+
+/* ========== 启动 ========== */
+window.addEventListener('resize', () => gridLayout());
+requestAnimationFrame(() => gridLayout());
+</script>
+</body>
+</html>
